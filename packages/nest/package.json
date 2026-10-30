@@ -1,0 +1,58 @@
+{
+  "name": "@toklyn/nest",
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "NestJS module, guard and decorators for toklyn sessions.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "imports": {
+    "#src/*": "./src/*"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "check:exports": "attw --pack . --profile node16"
+  },
+  "peerDependencies": {
+    "@nestjs/common": ">=9.0.0",
+    "@nestjs/core": ">=9.0.0",
+    "toklyn": "workspace:^"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@nestjs/common": "^12.3.2",
+    "@nestjs/core": "^12.3.2",
+    "@nestjs/platform-express": "^12.3.2",
+    "@nestjs/platform-fastify": "^12.3.2",
+    "@nestjs/testing": "^12.3.2",
+    "@types/node": "^26.6.6",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "toklyn": "workspace:^",
+    "tsup": "^9.0.0",
+    "vitest": "^5.0.5"
+  }
+}
