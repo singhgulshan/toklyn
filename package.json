@@ -1,0 +1,22 @@
+{
+  "name": "toklyn-monorepo",
+  "private": true,
+  "scripts": {
+    "format": "prettier --write \"packages/*/{src,tests}/**/*.ts\"",
+    "format:check": "prettier --check \"packages/*/{src,tests}/**/*.ts\"",
+    "lint": "oxlint packages/",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@12.16.1+sha512.091d1dee7927575661b25dab3c2ae31cafc1c54d6b71ed6a6600cf0c1cb10434a447eae14015f1b23e2e6bedeed79df94a932e2164d2832280dce3fb32f656d1",
+  "devDependencies": {
+    "@trivago/prettier-plugin-sort-imports": "^6.0.2",
+    "oxlint": "^1.90.0",
+    "prettier": "^3.9.10",
+    "typescript": "^6.0.3"
+  }
+}
