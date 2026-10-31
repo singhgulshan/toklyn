@@ -1,6 +1,6 @@
 {
   "name": "@toklyn/redis",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "license": "MIT",
   "description": "Redis session and access-token revocation stores for toklyn.",
   "keywords": [
