@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    // Compile against the built packages, as an app outside this repo would.
+    "paths": {}
+  }
+}

@@ -711,4 +711,39 @@ describe('createAuth', () => {
       });
     });
   });
+
+  describe('claims types', () => {
+    const config = {
+      signer: new JwtAccessTokenSigner(keyConfig),
+      verifier: new JwtAccessTokenVerifier(keyConfig),
+      sessions: new MemorySessionStore(),
+      accessTokenTtlSeconds: ACCESS_TTL,
+      refreshTokenTtlSeconds: REFRESH_TTL,
+      sessionMaxAgeSeconds: SESSION_MAX_AGE,
+    };
+
+    it('accepts claims declared as an interface', async () => {
+      interface AppClaims {
+        role: string;
+      }
+      const auth = createAuth<AppClaims>(config);
+
+      const pair = await auth.createSession({
+        subject: 'user-1',
+        claims: { role: 'admin' },
+      });
+      const claims = await auth.verifyAccessToken(pair.accessToken);
+      const role: string = claims.role;
+
+      expect(role).toBe('admin');
+    });
+
+    it('rejects reserved claim names at the type level', () => {
+      interface BadClaims {
+        sub: string;
+      }
+      // @ts-expect-error `sub` is reserved.
+      expect(() => createAuth<BadClaims>(config)).not.toThrow();
+    });
+  });
 });

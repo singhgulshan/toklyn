@@ -1,7 +1,12 @@
 import type { Auth } from '#src/auth.js';
 import { systemClock } from '#src/clock.js';
 import type { Clock } from '#src/contracts.js';
-import type { AccessTokenClaims, CustomClaims, TokenPair } from '#src/types.js';
+import type {
+  AccessTokenClaims,
+  ClaimsShape,
+  CustomClaims,
+  TokenPair,
+} from '#src/types.js';
 import { extractBearerToken } from './bearer.js';
 import { createRefreshCookie, readCookie } from './cookies.js';
 import type { RefreshCookieOptions } from './cookies.js';
@@ -32,7 +37,7 @@ export interface ToklynHttpResponse {
   body: SessionResponseBody | ErrorResponseBody | null;
 }
 
-export type AuthenticateResult<TClaims extends CustomClaims = CustomClaims> =
+export type AuthenticateResult<TClaims extends ClaimsShape = CustomClaims> =
   | { ok: true; claims: AccessTokenClaims<TClaims> }
   | { ok: false; response: ToklynHttpResponse };
 
@@ -51,7 +56,7 @@ export interface ToklynHttpOptions {
  * Refresh token in an HttpOnly cookie; access token in the JSON body, sent back as
  * `Authorization: Bearer`.
  */
-export interface ToklynHttp<TClaims extends CustomClaims = CustomClaims> {
+export interface ToklynHttp<TClaims extends ClaimsShape = CustomClaims> {
   readonly cookieName: string;
   /** Verifies the Bearer token. Storage errors in `online` mode give a 503. */
   authenticate(
@@ -66,7 +71,7 @@ export interface ToklynHttp<TClaims extends CustomClaims = CustomClaims> {
 
 const NO_STORE: readonly [string, string] = ['Cache-Control', 'no-store'];
 
-export function createToklynHttp<TClaims extends CustomClaims = CustomClaims>(
+export function createToklynHttp<TClaims extends ClaimsShape = CustomClaims>(
   auth: Auth<TClaims>,
   options: ToklynHttpOptions = {},
 ): ToklynHttp<TClaims> {

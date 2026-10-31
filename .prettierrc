@@ -14,5 +14,16 @@
   "importOrderParserPlugins": [
     "typescript",
     "decorators-legacy"
+  ],
+  "overrides": [
+    {
+      "files": "*.tsx",
+      "options": {
+        "importOrderParserPlugins": [
+          "typescript",
+          "jsx"
+        ]
+      }
+    }
   ]
 }

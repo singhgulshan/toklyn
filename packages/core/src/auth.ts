@@ -9,6 +9,7 @@ import type {
 import type {
   AccessTokenClaims,
   AuthEvent,
+  ClaimsShape,
   CustomClaims,
   Session,
   SessionMetadata,
@@ -42,20 +43,20 @@ export interface AuthConfig {
 }
 
 export interface CreateSessionInput<
-  TClaims extends CustomClaims = CustomClaims,
+  TClaims extends ClaimsShape = CustomClaims,
 > {
   subject: string;
   claims?: TClaims;
   metadata?: SessionMetadata;
 }
 
-export interface RefreshInput<TClaims extends CustomClaims = CustomClaims> {
+export interface RefreshInput<TClaims extends ClaimsShape = CustomClaims> {
   refreshToken: string;
   /** Replaces the session's stored claims, e.g. after a role change. */
   claims?: TClaims;
 }
 
-export interface Auth<TClaims extends CustomClaims = CustomClaims> {
+export interface Auth<TClaims extends ClaimsShape = CustomClaims> {
   createSession(input: CreateSessionInput<TClaims>): Promise<TokenPair>;
   refresh(input: RefreshInput<TClaims>): Promise<TokenPair>;
   verifyAccessToken(accessToken: string): Promise<AccessTokenClaims<TClaims>>;

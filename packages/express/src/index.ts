@@ -1,5 +1,11 @@
 import type { Request, RequestHandler, Response } from 'express';
-import type { AccessTokenClaims, Auth, CustomClaims, TokenPair } from 'toklyn';
+import type {
+  AccessTokenClaims,
+  Auth,
+  ClaimsShape,
+  CustomClaims,
+  TokenPair,
+} from 'toklyn';
 import { createToklynHttp } from 'toklyn/http';
 import type {
   ToklynHttpOptions,
@@ -23,9 +29,10 @@ export interface ToklynExpress {
 // Request-scoped storage instead of a global `Request` type augmentation.
 const claimsByRequest = new WeakMap<Request, AccessTokenClaims>();
 
-export function createToklynExpress<
-  TClaims extends CustomClaims = CustomClaims,
->(auth: Auth<TClaims>, options: ToklynExpressOptions = {}): ToklynExpress {
+export function createToklynExpress<TClaims extends ClaimsShape = CustomClaims>(
+  auth: Auth<TClaims>,
+  options: ToklynExpressOptions = {},
+): ToklynExpress {
   const http = createToklynHttp(auth, options);
 
   return {
@@ -48,7 +55,7 @@ export function createToklynExpress<
 }
 
 /** Claims of the current request. Throws if `requireAuth` did not run before this handler. */
-export function getAuth<TClaims extends CustomClaims = CustomClaims>(
+export function getAuth<TClaims extends ClaimsShape = CustomClaims>(
   req: Request,
 ): AccessTokenClaims<TClaims> {
   const claims = claimsByRequest.get(req);

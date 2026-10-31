@@ -12,6 +12,7 @@ import { RESERVED_CLAIMS } from '#src/types.js';
 import type {
   AccessTokenClaims,
   AuthEvent,
+  ClaimsShape,
   CustomClaims,
   RefreshTokenRecord,
   Session,
@@ -24,13 +25,13 @@ const RESERVED = new Set<string>(RESERVED_CLAIMS);
 /** Our tokens are 43 characters; this only bounds the hashing work an attacker can force. */
 const MAX_REFRESH_TOKEN_LENGTH = 1024;
 
-export function createAuth<TClaims extends CustomClaims = CustomClaims>(
+export function createAuth<TClaims extends ClaimsShape = CustomClaims>(
   config: AuthConfig,
 ): Auth<TClaims> {
   return new AuthManager<TClaims>(config);
 }
 
-class AuthManager<TClaims extends CustomClaims> implements Auth<TClaims> {
+class AuthManager<TClaims extends ClaimsShape> implements Auth<TClaims> {
   private readonly clock: Clock;
   private readonly codec: RefreshTokenCodec;
   private readonly online: boolean;

@@ -14,10 +14,16 @@ export const RESERVED_CLAIMS = [
 
 export type ReservedClaim = (typeof RESERVED_CLAIMS)[number];
 
-/** Application claims. Reserved claim names are rejected at the type level and at runtime. */
-export type CustomClaims = { [key: string]: unknown } & {
+/**
+ * Constraint for application claims. `object` rather than an index signature, so
+ * interfaces are accepted too. Reserved claim names are rejected here and at runtime.
+ */
+export type ClaimsShape = object & {
   [K in ReservedClaim]?: never;
 };
+
+/** Default application claims when no type is given. */
+export type CustomClaims = { [key: string]: unknown } & ClaimsShape;
 
 /** Claims the library always sets. `iat` and `exp` are epoch seconds, per the JWT spec. */
 export interface StandardClaims {
@@ -32,13 +38,13 @@ export interface StandardClaims {
   aud?: string | string[];
 }
 
-export type AccessTokenClaims<TClaims extends CustomClaims = CustomClaims> =
+export type AccessTokenClaims<TClaims extends ClaimsShape = CustomClaims> =
   Omit<TClaims, ReservedClaim> & StandardClaims;
 
 /** Free-form string metadata such as `userAgent` or `ip`. */
 export type SessionMetadata = Readonly<Record<string, string>>;
 
-export interface Session<TClaims extends CustomClaims = CustomClaims> {
+export interface Session<TClaims extends ClaimsShape = CustomClaims> {
   id: string;
   subject: string;
   claims: TClaims;

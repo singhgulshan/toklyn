@@ -5,15 +5,16 @@ import type {
   ModuleMetadata,
   Provider,
 } from '@nestjs/common';
-import type { Auth, CustomClaims } from 'toklyn';
+import type { Auth, ClaimsShape } from 'toklyn';
 import { createToklynHttp } from 'toklyn/http';
 import type { ToklynHttpOptions } from 'toklyn/http';
 import { ToklynAuthGuard } from './auth.guard.js';
 import { TOKLYN_HTTP } from './internal.js';
 import { ToklynSessionService } from './session.service.js';
 
+// Defaults to any claims type, so `Auth<YourClaims>` fits without a type argument.
 export interface ToklynModuleOptions<
-  TClaims extends CustomClaims = CustomClaims,
+  TClaims extends ClaimsShape = ClaimsShape,
 > extends ToklynHttpOptions {
   auth: Auth<TClaims>;
 }

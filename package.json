@@ -2,9 +2,9 @@
   "name": "toklyn-monorepo",
   "private": true,
   "scripts": {
-    "format": "prettier --write \"packages/*/{src,tests}/**/*.ts\"",
-    "format:check": "prettier --check \"packages/*/{src,tests}/**/*.ts\"",
-    "lint": "oxlint packages/",
+    "format": "prettier --write \"{packages,examples}/*/{src,tests,public}/**/*.{ts,tsx,js,html}\"",
+    "format:check": "prettier --check \"{packages,examples}/*/{src,tests,public}/**/*.{ts,tsx,js,html}\"",
+    "lint": "oxlint packages/ examples/",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test"
