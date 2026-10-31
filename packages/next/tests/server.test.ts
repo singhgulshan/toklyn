@@ -34,7 +34,7 @@ class FlakyStore extends MemorySessionStore {
   }
 }
 
-function makeAuth(overrides: Partial<AuthConfig> = {}) {
+function makeAuth(overrides: Partial<AuthConfig<{ role: string }>> = {}) {
   const clock = new FakeClock();
   const store = new FlakyStore();
   const auth = createAuth<{ role: string }>({

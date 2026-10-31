@@ -22,11 +22,24 @@ import type {
 const SECOND = 1000;
 const VERIFICATION_MODES = new Set<string>(['offline', 'online']);
 const RESERVED = new Set<string>(RESERVED_CLAIMS);
-/** Our tokens are 43 characters; this only bounds the hashing work an attacker can force. */
+/** Our tokens are about 80 characters; this only bounds the hashing work an attacker can force. */
 const MAX_REFRESH_TOKEN_LENGTH = 1024;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_LENGTH = 36;
+
+interface IssuedRefreshToken {
+  token: string;
+  hash: string;
+}
+
+interface Rotation<TClaims extends ClaimsShape> {
+  session: Session<TClaims>;
+  refreshToken: RefreshTokenRecord;
+  token: string;
+}
 
 export function createAuth<TClaims extends ClaimsShape = CustomClaims>(
-  config: AuthConfig,
+  config: AuthConfig<TClaims>,
 ): Auth<TClaims> {
   return new AuthManager<TClaims>(config);
 }
@@ -37,7 +50,7 @@ class AuthManager<TClaims extends ClaimsShape> implements Auth<TClaims> {
   private readonly online: boolean;
   readonly reuseGraceMs: number;
 
-  constructor(private readonly config: AuthConfig) {
+  constructor(private readonly config: AuthConfig<TClaims>) {
     assertPositive(config.accessTokenTtlSeconds, 'accessTokenTtlSeconds');
     assertPositive(config.refreshTokenTtlSeconds, 'refreshTokenTtlSeconds');
     assertPositive(config.sessionMaxAgeSeconds, 'sessionMaxAgeSeconds');
@@ -49,6 +62,12 @@ class AuthManager<TClaims extends ClaimsShape> implements Auth<TClaims> {
     const verification = config.verification ?? 'offline';
     if (!VERIFICATION_MODES.has(verification)) {
       throw invalidConfig('verification must be "offline" or "online"');
+    }
+    if (
+      config.onRefresh !== undefined &&
+      typeof config.onRefresh !== 'function'
+    ) {
+      throw invalidConfig('onRefresh must be a function');
     }
 
     this.online = verification === 'online';
@@ -68,12 +87,13 @@ class AuthManager<TClaims extends ClaimsShape> implements Auth<TClaims> {
       claims,
       metadata: { ...input.metadata },
       createdAt: now,
+      lastRefreshedAt: now,
       expiresAt: now + this.config.sessionMaxAgeSeconds * SECOND,
       revokedAt: null,
     };
     // Sign before persisting so a signing failure leaves nothing stored.
     const [refresh, access] = await Promise.all([
-      this.codec.generate(),
+      this.issueRefreshToken(session.id),
       this.signAccessToken(session, now),
     ]);
     const refreshToken: RefreshTokenRecord = {
@@ -104,22 +124,89 @@ class AuthManager<TClaims extends ClaimsShape> implements Auth<TClaims> {
 
   async refresh(input: RefreshInput<TClaims>): Promise<TokenPair> {
     const presented = input?.refreshToken;
-    if (
-      typeof presented !== 'string' ||
-      presented.length > MAX_REFRESH_TOKEN_LENGTH ||
-      presented.trim() === ''
-    ) {
-      throw new ToklynError(
-        'invalid_refresh_token',
-        'Refresh token is invalid',
-      );
-    }
+    assertRefreshTokenShape(presented);
     if (input.claims !== undefined) assertCustomClaims(input.claims);
 
     const now = this.clock.now();
+    const sessionId = sessionIdOf(presented);
+    let claims = input.claims;
+    if (this.config.onRefresh && sessionId !== null) {
+      const session = await guard(() => this.config.sessions.find(sessionId));
+      // Inactive sessions are left to rotate(), which reports why.
+      if (session && session.revokedAt === null && now < session.expiresAt) {
+        claims =
+          (await this.decide(session as Session<TClaims>)) ?? input.claims;
+      }
+    }
+
+    const rotation = await this.rotate(presented, sessionId, now, claims);
+    let session = rotation.session;
+    if (this.config.onRefresh && sessionId === null) {
+      // Tokens issued by 0.1.0 carry no session id, so the hook can only run after rotating.
+      const override = await this.decide(session);
+      if (override) session = { ...session, claims: override };
+    }
+
+    const access = await this.signAccessToken(session, now);
+    this.emit({
+      type: 'token_refreshed',
+      sessionId: session.id,
+      subject: session.subject,
+    });
+    return {
+      accessToken: access.token,
+      accessTokenExpiresAt: access.expiresAt,
+      refreshToken: rotation.token,
+      refreshTokenExpiresAt: rotation.refreshToken.expiresAt,
+      sessionId: session.id,
+    };
+  }
+
+  async logout(refreshToken: string): Promise<void> {
+    let sessionId: string;
+    try {
+      assertRefreshTokenShape(refreshToken);
+      // The store finds sessions by token hash only through rotate, which also proves possession.
+      const rotation = await this.rotate(
+        refreshToken,
+        sessionIdOf(refreshToken),
+        this.clock.now(),
+        undefined,
+      );
+      sessionId = rotation.session.id;
+    } catch (error) {
+      if (error instanceof ToklynError && error.code !== 'storage_error') {
+        return;
+      }
+      throw error;
+    }
+    await this.revokeSession(sessionId);
+  }
+
+  /** Runs `onRefresh`. Returns replacement claims, or undefined to keep the current ones. */
+  private async decide(
+    session: Session<TClaims>,
+  ): Promise<TClaims | undefined> {
+    const hook = this.config.onRefresh;
+    if (!hook) return undefined;
+    const decision = await guard(async () => hook(session));
+    if (decision === null) {
+      await this.revokeSession(session.id);
+      throw new ToklynError('session_revoked', 'Session was revoked');
+    }
+    if (decision !== undefined) assertCustomClaims(decision);
+    return decision;
+  }
+
+  private async rotate(
+    presented: string,
+    sessionId: string | null,
+    now: number,
+    claims: TClaims | undefined,
+  ): Promise<Rotation<TClaims>> {
     const [presentedHash, next] = await Promise.all([
       this.codec.hash(presented),
-      this.codec.generate(),
+      this.issueRefreshToken(sessionId),
     ]);
     const result = await guard(() =>
       this.config.sessions.rotate({
@@ -128,26 +215,24 @@ class AuthManager<TClaims extends ClaimsShape> implements Auth<TClaims> {
         now,
         refreshTtlMs: this.config.refreshTokenTtlSeconds * SECOND,
         reuseGraceMs: this.reuseGraceMs,
-        claims: input.claims,
+        claims,
       }),
     );
 
     switch (result.status) {
-      case 'rotated': {
-        const access = await this.signAccessToken(result.session, now);
-        this.emit({
-          type: 'token_refreshed',
-          sessionId: result.session.id,
-          subject: result.session.subject,
-        });
+      case 'rotated':
+        // The hash covers the prefix, so this only fails if the store is wrong.
+        if (sessionId !== null && result.session.id !== sessionId) {
+          throw new ToklynError(
+            'invalid_refresh_token',
+            'Refresh token is invalid',
+          );
+        }
         return {
-          accessToken: access.token,
-          accessTokenExpiresAt: access.expiresAt,
-          refreshToken: next.token,
-          refreshTokenExpiresAt: result.refreshToken.expiresAt,
-          sessionId: result.session.id,
+          session: result.session as Session<TClaims>,
+          refreshToken: result.refreshToken,
+          token: next.token,
         };
-      }
       case 'unknown_token':
         throw new ToklynError(
           'invalid_refresh_token',
@@ -160,15 +245,25 @@ class AuthManager<TClaims extends ClaimsShape> implements Auth<TClaims> {
       case 'session_revoked':
         throw new ToklynError('session_revoked', 'Session was revoked');
       case 'reuse_detected': {
-        const { id: sessionId, subject } = result.session;
-        this.emit({ type: 'refresh_reuse_detected', sessionId, subject });
-        this.emit({ type: 'session_revoked', sessionId, subject });
+        const { id, subject } = result.session;
+        this.emit({ type: 'refresh_reuse_detected', sessionId: id, subject });
+        this.emit({ type: 'session_revoked', sessionId: id, subject });
         throw new ToklynError(
           'refresh_token_reused',
           'Refresh token was already used; the session was revoked',
         );
       }
     }
+  }
+
+  /** `<sessionId>.<random>`; null keeps the 0.1.0 format, which has no prefix. */
+  private async issueRefreshToken(
+    sessionId: string | null,
+  ): Promise<IssuedRefreshToken> {
+    const generated = await this.codec.generate();
+    if (sessionId === null) return generated;
+    const token = `${sessionId}.${generated.token}`;
+    return { token, hash: await this.codec.hash(token) };
   }
 
   async verifyAccessToken(
@@ -206,6 +301,16 @@ class AuthManager<TClaims extends ClaimsShape> implements Auth<TClaims> {
         sessionId: session.id,
         subject: session.subject,
       });
+    }
+  }
+
+  async revokeOtherSessions(
+    subject: string,
+    keepSessionId: string,
+  ): Promise<void> {
+    const sessions = await this.listSessions(subject);
+    for (const session of sessions) {
+      if (session.id !== keepSessionId) await this.revokeSession(session.id);
     }
   }
 
@@ -315,6 +420,23 @@ function assertPositive(value: number, name: string): void {
   if (!Number.isFinite(value) || value <= 0) {
     throw invalidConfig(`${name} must be a positive number`);
   }
+}
+
+function assertRefreshTokenShape(token: unknown): asserts token is string {
+  if (
+    typeof token !== 'string' ||
+    token.length > MAX_REFRESH_TOKEN_LENGTH ||
+    token.trim() === ''
+  ) {
+    throw new ToklynError('invalid_refresh_token', 'Refresh token is invalid');
+  }
+}
+
+/** The session id prefix, or null for tokens without one. */
+function sessionIdOf(token: string): string | null {
+  if (token.indexOf('.') !== UUID_LENGTH) return null;
+  const prefix = token.slice(0, UUID_LENGTH);
+  return UUID.test(prefix) ? prefix : null;
 }
 
 function assertSubject(subject: unknown): asserts subject is string {

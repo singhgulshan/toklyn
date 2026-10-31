@@ -58,6 +58,14 @@ function setup() {
     broken: toklyn.withAuth(() => {
       throw new Error('handler failed');
     }),
+    feed: toklyn.withOptionalAuth<Request, RouteContext>(
+      async (_request, { params, claims }) =>
+        Response.json({ id: (await params).id, role: claims?.role ?? null }),
+    ),
+    feedLenient: toklyn.withOptionalAuth(
+      (_request, { claims }) => Response.json({ sub: claims?.sub ?? null }),
+      { invalidToken: 'ignore' },
+    ),
   };
   return { auth, store, routes };
 }
@@ -126,6 +134,24 @@ describe('@toklyn/next', () => {
       role: 'admin',
       path: '/items/42',
     });
+  });
+
+  it('lets guests through withOptionalAuth and still rejects bad tokens by default', async () => {
+    const { routes } = setup();
+    const { accessToken } = await login(routes);
+
+    const signedIn = await routes.feed(
+      getItem(`Bearer ${accessToken}`),
+      context,
+    );
+    const guest = await routes.feed(getItem(), context);
+    const rejected = await routes.feed(getItem('Bearer not.a.jwt'), context);
+    const ignored = await routes.feedLenient(getItem('Bearer not.a.jwt'), {});
+
+    expect(await signedIn.json()).toEqual({ id: '42', role: 'admin' });
+    expect(await guest.json()).toEqual({ id: '42', role: null });
+    expect(rejected.status).toBe(401);
+    expect(await ignored.json()).toEqual({ sub: null });
   });
 
   it('returns an identical 401 for every kind of bad Bearer token', async () => {

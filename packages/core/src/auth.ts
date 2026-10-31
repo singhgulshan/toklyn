@@ -16,7 +16,11 @@ import type {
   TokenPair,
 } from './types.js';
 
-export interface AuthConfig {
+/** `undefined` keeps the claims, an object replaces them, `null` revokes the session. */
+export type RefreshDecision<TClaims extends ClaimsShape = CustomClaims> =
+  TClaims | null | undefined;
+
+export interface AuthConfig<TClaims extends ClaimsShape = CustomClaims> {
   signer: AccessTokenSigner;
   verifier: AccessTokenVerifier;
   sessions: SessionStore;
@@ -39,6 +43,14 @@ export interface AuthConfig {
   verification?: 'offline' | 'online';
   /** Defaults to 0, which is strict reuse detection. */
   reuseGraceMs?: number;
+  /**
+   * Runs before each refresh of an active session, e.g. to reload the user. Its claims are
+   * stored with the rotation. If it throws, nothing is consumed and the refresh fails with
+   * `storage_error`.
+   */
+  onRefresh?: (
+    session: Session<TClaims>,
+  ) => RefreshDecision<TClaims> | Promise<RefreshDecision<TClaims>>;
   onEvent?: (event: AuthEvent) => void;
 }
 
@@ -61,9 +73,16 @@ export interface Auth<TClaims extends ClaimsShape = CustomClaims> {
   readonly reuseGraceMs: number;
   createSession(input: CreateSessionInput<TClaims>): Promise<TokenPair>;
   refresh(input: RefreshInput<TClaims>): Promise<TokenPair>;
+  /**
+   * Revokes the session a refresh token belongs to. Invalid, expired or already revoked
+   * tokens are ignored. Does not run `onRefresh`.
+   */
+  logout(refreshToken: string): Promise<void>;
   verifyAccessToken(accessToken: string): Promise<AccessTokenClaims<TClaims>>;
   revokeSession(sessionId: string): Promise<void>;
   revokeAllSessions(subject: string): Promise<void>;
+  /** Revokes every active session of the subject except `keepSessionId`, e.g. "sign out other devices". */
+  revokeOtherSessions(subject: string, keepSessionId: string): Promise<void>;
   listSessions(subject: string): Promise<Session<TClaims>[]>;
   /** Denylists one access token. Requires `revocations`. */
   revokeAccessToken(accessToken: string): Promise<void>;

@@ -68,6 +68,7 @@ export class RedisSessionStore implements SessionStore {
         String(refreshToken.expiresAt),
         serializeTimestamp(refreshToken.consumedAt),
         String(ttl),
+        String(session.lastRefreshedAt),
       ],
     );
     if (created !== 1) {

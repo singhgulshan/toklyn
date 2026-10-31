@@ -6,6 +6,7 @@ import type {
 } from 'toklyn';
 import type {
   HttpHeaders,
+  OptionalAuthOptions,
   ToklynHttp,
   ToklynHttpRequest,
   ToklynHttpResponse,
@@ -13,6 +14,13 @@ import type {
 
 export interface ToklynAuthContext<TClaims extends ClaimsShape = CustomClaims> {
   claims: AccessTokenClaims<TClaims>;
+}
+
+export interface ToklynOptionalAuthContext<
+  TClaims extends ClaimsShape = CustomClaims,
+> {
+  /** Null for guests. */
+  claims: AccessTokenClaims<TClaims> | null;
 }
 
 export type ToklynRouteHandler<
@@ -40,6 +48,17 @@ export interface ToklynNext<TClaims extends ClaimsShape = CustomClaims> {
       context: TContext & ToklynAuthContext<TClaims>,
     ) => Response | Promise<Response>,
   ): ToklynRouteHandler<TRequest, TContext>;
+  /** Like `withAuth`, but guests get through with `claims: null`. */
+  withOptionalAuth<
+    TRequest extends Request = Request,
+    TContext extends object = object,
+  >(
+    handler: (
+      request: TRequest,
+      context: TContext & ToklynOptionalAuthContext<TClaims>,
+    ) => Response | Promise<Response>,
+    options?: OptionalAuthOptions,
+  ): ToklynRouteHandler<TRequest, TContext>;
 }
 
 export function routeHandlers<TClaims extends ClaimsShape>(
@@ -58,6 +77,16 @@ export function routeHandlers<TClaims extends ClaimsShape>(
     withAuth(handler) {
       return async (request, context) => {
         const result = await http.authenticate(toHttpRequest(request));
+        if (!result.ok) return toResponse(result.response);
+        return handler(request, { ...context, claims: result.claims });
+      };
+    },
+    withOptionalAuth(handler, options) {
+      return async (request, context) => {
+        const result = await http.authenticateOptional(
+          toHttpRequest(request),
+          options,
+        );
         if (!result.ok) return toResponse(result.response);
         return handler(request, { ...context, claims: result.claims });
       };

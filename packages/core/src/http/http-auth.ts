@@ -50,6 +50,21 @@ export type AuthenticateResult<TClaims extends ClaimsShape = CustomClaims> =
   | { ok: true; claims: AccessTokenClaims<TClaims> }
   | { ok: false; response: ToklynHttpResponse };
 
+/** `claims` is null for guests. */
+export type OptionalAuthenticateResult<
+  TClaims extends ClaimsShape = CustomClaims,
+> =
+  | { ok: true; claims: AccessTokenClaims<TClaims> | null }
+  | { ok: false; response: ToklynHttpResponse };
+
+export interface OptionalAuthOptions {
+  /**
+   * What to do with an invalid or expired access token. `reject` (default) answers 401 so
+   * the client can refresh; `ignore` treats the request as a guest.
+   */
+  invalidToken?: 'reject' | 'ignore';
+}
+
 export type ResolveResult<TClaims extends ClaimsShape = CustomClaims> = (
   | { status: 'authenticated'; claims: AccessTokenClaims<TClaims> }
   | { status: 'unauthenticated' | 'unavailable' }
@@ -94,6 +109,14 @@ export interface ToklynHttp<TClaims extends ClaimsShape = CustomClaims> {
   authenticate(
     request: ToklynHttpRequest,
   ): Promise<AuthenticateResult<TClaims>>;
+  /**
+   * Like `authenticate`, but a request without an access token is a guest (`claims: null`).
+   * In cookie mode, untrusted cross-site writes are guests too. Storage errors still give a 503.
+   */
+  authenticateOptional(
+    request: ToklynHttpRequest,
+    options?: OptionalAuthOptions,
+  ): Promise<OptionalAuthenticateResult<TClaims>>;
   /** Response for your own login route, after `auth.createSession`. */
   issue(tokens: TokenPair): ToklynHttpResponse;
   refresh(request: ToklynHttpRequest): Promise<ToklynHttpResponse>;
@@ -241,6 +264,12 @@ export function createToklynHttp<TClaims extends ClaimsShape = CustomClaims>(
     return accessCookie;
   }
 
+  function readAccessToken(request: ToklynHttpRequest): string | null {
+    return accessCookie
+      ? readCookie(request.header('cookie'), accessCookie.name)
+      : extractBearerToken(request.header('authorization'));
+  }
+
   return {
     accessToken: mode,
     cookieName: refreshCookie.name,
@@ -248,17 +277,34 @@ export function createToklynHttp<TClaims extends ClaimsShape = CustomClaims>(
     issue,
 
     async authenticate(request) {
-      let token: string | null;
-      if (accessCookie) {
-        if (!isTrustedWrite(request))
-          return { ok: false, response: forbidden() };
-        token = readCookie(request.header('cookie'), accessCookie.name);
-      } else {
-        token = extractBearerToken(request.header('authorization'));
+      if (accessCookie && !isTrustedWrite(request)) {
+        return { ok: false, response: forbidden() };
       }
+      const token = readAccessToken(request);
       if (token === null) return { ok: false, response: authFailure(401) };
 
       const result = await verify(token);
+      if (typeof result === 'number') {
+        return { ok: false, response: authFailure(result) };
+      }
+      return { ok: true, claims: result };
+    },
+
+    async authenticateOptional(request, optionalOptions = {}) {
+      const invalidToken = optionalOptions.invalidToken ?? 'reject';
+      if (invalidToken !== 'reject' && invalidToken !== 'ignore') {
+        throw invalidConfig('invalidToken must be "reject" or "ignore"');
+      }
+      if (accessCookie && !isTrustedWrite(request)) {
+        return { ok: true, claims: null };
+      }
+      const token = readAccessToken(request);
+      if (token === null) return { ok: true, claims: null };
+
+      const result = await verify(token);
+      if (result === 401 && invalidToken === 'ignore') {
+        return { ok: true, claims: null };
+      }
       if (typeof result === 'number') {
         return { ok: false, response: authFailure(result) };
       }
@@ -295,9 +341,7 @@ export function createToklynHttp<TClaims extends ClaimsShape = CustomClaims>(
       );
       if (refreshToken !== null) {
         try {
-          // The store can only look a session up by id, so rotating is how we learn it.
-          const { sessionId } = await auth.refresh({ refreshToken });
-          await auth.revokeSession(sessionId);
+          await auth.logout(refreshToken);
         } catch (error) {
           const mapped = toToklynHttpError(error);
           if (!mapped) throw error;

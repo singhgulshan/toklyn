@@ -50,6 +50,8 @@ export interface Session<TClaims extends ClaimsShape = CustomClaims> {
   claims: TClaims;
   metadata: SessionMetadata;
   createdAt: number;
+  /** Set to `createdAt`, then to the time of each successful rotation. */
+  lastRefreshedAt: number;
   /** Absolute lifetime. Rotation never extends it. */
   expiresAt: number;
   revokedAt: number | null;

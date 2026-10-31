@@ -9,7 +9,7 @@ import {
 } from 'toklyn';
 import type { ToklynHttpOptions } from 'toklyn/http';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createToklynExpress, getAuth } from '#src/index.js';
+import { createToklynExpress, getAuth, getOptionalAuth } from '#src/index.js';
 
 const ORIGIN = 'https://app.example.com';
 const COOKIE = '__Host-toklyn_refresh';
@@ -56,6 +56,19 @@ async function startApp(options: ToklynHttpOptions = {}) {
     res.status(201).json({ by: getAuth(req).sub });
   });
   app.get('/unguarded', (req, res) => {
+    res.json(getAuth(req));
+  });
+  app.get('/feed', toklyn.optionalAuth(), (req, res) => {
+    res.json({ sub: getOptionalAuth(req)?.sub ?? null });
+  });
+  app.get(
+    '/feed-lenient',
+    toklyn.optionalAuth({ invalidToken: 'ignore' }),
+    (req, res) => {
+      res.json({ sub: getOptionalAuth(req)?.sub ?? null });
+    },
+  );
+  app.get('/guest-getauth', toklyn.optionalAuth(), (req, res) => {
     res.json(getAuth(req));
   });
   const onError: ErrorRequestHandler = (error: Error, _req, res, _next) => {
@@ -218,6 +231,26 @@ describe('@toklyn/express', () => {
       `${COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Strict`,
     ]);
     expect(await auth.listSessions('u1')).toEqual([]);
+  });
+
+  it('lets guests through optionalAuth and still rejects bad tokens by default', async () => {
+    const { call } = await startApp();
+    const { accessToken } = await login(call);
+    const bad = { headers: { authorization: 'Bearer not.a.jwt' } };
+
+    const signedIn = await call('/feed', {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    const guest = await call('/feed');
+    const rejected = await call('/feed', bad);
+    const ignored = await call('/feed-lenient', bad);
+
+    expect(await signedIn.json()).toEqual({ sub: 'u1' });
+    expect(await guest.json()).toEqual({ sub: null });
+    expect(rejected.status).toBe(401);
+    expect(ignored.status).toBe(200);
+    expect(await ignored.json()).toEqual({ sub: null });
+    expect((await call('/guest-getauth')).status).toBe(500);
   });
 
   it('fails loudly when getAuth runs without requireAuth', async () => {

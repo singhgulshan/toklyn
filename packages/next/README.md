@@ -104,12 +104,13 @@ The proxy refreshes an expired access cookie and forwards the new one to the pag
 
 `options` are the [HTTP options](https://github.com/singhgulshan/toklyn#http-options) of `toklyn/http`.
 
-| Member                    | Description                                                                 |
-| ------------------------- | --------------------------------------------------------------------------- |
-| `refresh(request)`        | Export as `POST`. Rotates the refresh cookie and returns a new session      |
-| `logout(request)`         | Export as `POST`. Revokes the session and clears the cookies                |
-| `sessionResponse(tokens)` | Login response after `auth.createSession`                                   |
-| `withAuth(handler)`       | Wraps a route handler; the handler receives the route context plus `claims` |
+| Member                                | Description                                                                                                                                  |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `refresh(request)`                    | Export as `POST`. Rotates the refresh cookie and returns a new session                                                                       |
+| `logout(request)`                     | Export as `POST`. Revokes the session and clears the cookies                                                                                 |
+| `sessionResponse(tokens)`             | Login response after `auth.createSession`                                                                                                    |
+| `withAuth(handler)`                   | Wraps a route handler; the handler receives the route context plus `claims`                                                                  |
+| `withOptionalAuth(handler, options?)` | Like `withAuth`, but guests get `claims: null`. `{ invalidToken: 'ignore' }` also treats invalid tokens as guests; the default answers `401` |
 
 ### `createToklynServer(auth, options)`
 

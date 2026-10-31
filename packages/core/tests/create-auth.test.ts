@@ -69,6 +69,12 @@ class FailingFindStore extends MemorySessionStore {
   }
 }
 
+class FailingListStore extends MemorySessionStore {
+  override async listForSubject(): Promise<Session[]> {
+    throw new Error('db down');
+  }
+}
+
 async function codeOf(promise: Promise<unknown>) {
   try {
     await promise;
@@ -79,7 +85,7 @@ async function codeOf(promise: Promise<unknown>) {
 }
 
 function setup(
-  overrides: Partial<AuthConfig> = {},
+  overrides: Partial<AuthConfig<{ role?: string }>> = {},
   store: MemorySessionStore = new MemorySessionStore(),
 ) {
   const clock = new FakeClock();
@@ -113,7 +119,10 @@ describe('createAuth', () => {
       expect(pair.sessionId).toBeTruthy();
       expect(pair.accessTokenExpiresAt).toBe(T0 + ACCESS_TTL * SECOND);
       expect(pair.refreshTokenExpiresAt).toBe(T0 + REFRESH_TTL * SECOND);
-      expect(pair.refreshToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(pair.refreshToken).toBe(
+        `${pair.sessionId}.${pair.refreshToken.slice(37)}`,
+      );
+      expect(pair.refreshToken.slice(37)).toMatch(/^[A-Za-z0-9_-]{43}$/);
       expect(pair.accessToken.split('.')).toHaveLength(3);
     });
 
@@ -480,6 +489,263 @@ describe('createAuth', () => {
     });
   });
 
+  describe('refresh token format', () => {
+    async function legacySession(store: MemorySessionStore, token: string) {
+      const session: Session = {
+        id: crypto.randomUUID(),
+        subject: 'user-1',
+        claims: { role: 'admin' },
+        metadata: {},
+        createdAt: T0,
+        lastRefreshedAt: T0,
+        expiresAt: T0 + SESSION_MAX_AGE * SECOND,
+        revokedAt: null,
+      };
+      await store.create({
+        session,
+        refreshToken: {
+          hash: await new DefaultRefreshTokenCodec().hash(token),
+          sessionId: session.id,
+          issuedAt: T0,
+          expiresAt: T0 + REFRESH_TTL * SECOND,
+          consumedAt: null,
+        },
+      });
+      return session;
+    }
+
+    it('rejects a token whose session id prefix was swapped', async () => {
+      const { auth } = setup();
+      const victim = await auth.createSession({ subject: 'victim' });
+      const attacker = await auth.createSession({ subject: 'attacker' });
+      const forged = `${victim.sessionId}${attacker.refreshToken.slice(36)}`;
+
+      expect(await codeOf(auth.refresh({ refreshToken: forged }))).toBe(
+        'invalid_refresh_token',
+      );
+      await expect(
+        auth.refresh({ refreshToken: victim.refreshToken }),
+      ).resolves.toMatchObject({ sessionId: victim.sessionId });
+      await expect(
+        auth.refresh({ refreshToken: attacker.refreshToken }),
+      ).resolves.toMatchObject({ sessionId: attacker.sessionId });
+    });
+
+    it('still accepts tokens without a prefix and keeps their format', async () => {
+      const { auth, store } = setup();
+      const session = await legacySession(store, 'legacy-token');
+
+      const pair = await auth.refresh({ refreshToken: 'legacy-token' });
+
+      expect(pair.sessionId).toBe(session.id);
+      expect(pair.refreshToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      await expect(
+        auth.refresh({ refreshToken: pair.refreshToken }),
+      ).resolves.toMatchObject({ sessionId: session.id });
+    });
+
+    it('runs onRefresh after rotating a token without a prefix', async () => {
+      const { auth, store } = setup({ onRefresh: () => ({ role: 'viewer' }) });
+      await legacySession(store, 'legacy-a');
+      const rejecting = setup({ onRefresh: () => null });
+      const session = await legacySession(rejecting.store, 'legacy-b');
+
+      const pair = await auth.refresh({ refreshToken: 'legacy-a' });
+
+      expect(await auth.verifyAccessToken(pair.accessToken)).toMatchObject({
+        role: 'viewer',
+      });
+      expect(
+        await codeOf(rejecting.auth.refresh({ refreshToken: 'legacy-b' })),
+      ).toBe('session_revoked');
+      expect((await rejecting.store.find(session.id))?.revokedAt).toBe(T0);
+    });
+  });
+
+  describe('onRefresh', () => {
+    it('receives the active session and keeps the claims when it returns nothing', async () => {
+      const seen: Session<{ role?: string }>[] = [];
+      const { auth } = setup({
+        onRefresh: (session) => {
+          seen.push(session);
+        },
+      });
+      const first = await auth.createSession({
+        subject: 'user-1',
+        claims: { role: 'admin' },
+        metadata: { ip: '10.0.0.1' },
+      });
+
+      const second = await auth.refresh({ refreshToken: first.refreshToken });
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({
+        id: first.sessionId,
+        subject: 'user-1',
+        claims: { role: 'admin' },
+        metadata: { ip: '10.0.0.1' },
+      });
+      expect(await auth.verifyAccessToken(second.accessToken)).toMatchObject({
+        role: 'admin',
+      });
+    });
+
+    it('signs and stores the claims it returns', async () => {
+      const { auth } = setup({ onRefresh: async () => ({ role: 'viewer' }) });
+      const first = await auth.createSession({
+        subject: 'user-1',
+        claims: { role: 'admin' },
+      });
+
+      const second = await auth.refresh({
+        refreshToken: first.refreshToken,
+        claims: { role: 'editor' },
+      });
+
+      expect(await auth.verifyAccessToken(second.accessToken)).toMatchObject({
+        role: 'viewer',
+      });
+      const [session] = await auth.listSessions('user-1');
+      expect(session?.claims).toEqual({ role: 'viewer' });
+    });
+
+    it('applies supplied claims when it returns nothing', async () => {
+      const { auth } = setup({ onRefresh: () => undefined });
+      const first = await auth.createSession({ subject: 'user-1' });
+
+      await auth.refresh({
+        refreshToken: first.refreshToken,
+        claims: { role: 'editor' },
+      });
+
+      const [session] = await auth.listSessions('user-1');
+      expect(session?.claims).toEqual({ role: 'editor' });
+    });
+
+    it('revokes the session when it returns null', async () => {
+      const { auth, events } = setup({ onRefresh: () => null });
+      const pair = await auth.createSession({ subject: 'user-1' });
+
+      expect(
+        await codeOf(auth.refresh({ refreshToken: pair.refreshToken })),
+      ).toBe('session_revoked');
+      expect(await auth.listSessions('user-1')).toEqual([]);
+      expect(events).toContainEqual({
+        type: 'session_revoked',
+        sessionId: pair.sessionId,
+        subject: 'user-1',
+      });
+      expect(events.map((e) => e.type)).not.toContain('token_refreshed');
+    });
+
+    it('consumes nothing when it throws, so the same token works later', async () => {
+      let fail = true;
+      const { auth } = setup({
+        onRefresh: () => {
+          if (fail) throw new Error('user db down');
+        },
+      });
+      const pair = await auth.createSession({ subject: 'user-1' });
+
+      expect(
+        await codeOf(auth.refresh({ refreshToken: pair.refreshToken })),
+      ).toBe('storage_error');
+      fail = false;
+      await expect(
+        auth.refresh({ refreshToken: pair.refreshToken }),
+      ).resolves.toMatchObject({ sessionId: pair.sessionId });
+    });
+
+    it('passes its own ToklynError through', async () => {
+      const { auth } = setup({
+        onRefresh: () => {
+          throw new ToklynError('invalid_input', 'no');
+        },
+      });
+      const pair = await auth.createSession({ subject: 'user-1' });
+
+      expect(
+        await codeOf(auth.refresh({ refreshToken: pair.refreshToken })),
+      ).toBe('invalid_input');
+    });
+
+    it('rejects reserved claim names and consumes nothing', async () => {
+      let claims: { role?: string } = { sub: 'admin' } as never;
+      const { auth } = setup({ onRefresh: () => claims });
+      const pair = await auth.createSession({ subject: 'user-1' });
+
+      expect(
+        await codeOf(auth.refresh({ refreshToken: pair.refreshToken })),
+      ).toBe('invalid_input');
+      claims = { role: 'viewer' };
+      await expect(
+        auth.refresh({ refreshToken: pair.refreshToken }),
+      ).resolves.toMatchObject({ sessionId: pair.sessionId });
+    });
+
+    it('is not called for revoked or unknown tokens', async () => {
+      let calls = 0;
+      const { auth } = setup({
+        onRefresh: () => {
+          calls += 1;
+        },
+      });
+      const pair = await auth.createSession({ subject: 'user-1' });
+      await auth.revokeSession(pair.sessionId);
+
+      expect(
+        await codeOf(auth.refresh({ refreshToken: pair.refreshToken })),
+      ).toBe('session_revoked');
+      expect(
+        await codeOf(
+          auth.refresh({ refreshToken: `${crypto.randomUUID()}.unknown` }),
+        ),
+      ).toBe('invalid_refresh_token');
+      expect(calls).toBe(0);
+    });
+  });
+
+  describe('logout', () => {
+    it('revokes the session without refreshing or running onRefresh', async () => {
+      let calls = 0;
+      const { auth, events } = setup({
+        onRefresh: () => {
+          calls += 1;
+        },
+      });
+      const pair = await auth.createSession({ subject: 'user-1' });
+
+      await auth.logout(pair.refreshToken);
+
+      expect(await auth.listSessions('user-1')).toEqual([]);
+      expect(calls).toBe(0);
+      expect(events.map((e) => e.type)).toEqual([
+        'session_created',
+        'session_revoked',
+      ]);
+    });
+
+    it('ignores invalid, unknown and already revoked tokens', async () => {
+      const { auth } = setup();
+      const pair = await auth.createSession({ subject: 'user-1' });
+      await auth.logout(pair.refreshToken);
+
+      await expect(auth.logout(pair.refreshToken)).resolves.toBeUndefined();
+      await expect(auth.logout('')).resolves.toBeUndefined();
+      await expect(auth.logout('nope')).resolves.toBeUndefined();
+      await expect(auth.logout(42 as never)).resolves.toBeUndefined();
+    });
+
+    it('throws storage errors', async () => {
+      const { auth } = setup({}, new FlakyRotateStore());
+      const pair = await auth.createSession({ subject: 'user-1' });
+
+      expect(await codeOf(auth.logout(pair.refreshToken))).toBe(
+        'storage_error',
+      );
+    });
+  });
+
   describe('verifyAccessToken', () => {
     it('rejects an expired token', async () => {
       const { auth, clock } = setup();
@@ -609,6 +875,58 @@ describe('createAuth', () => {
       );
     });
 
+    it('revokeOtherSessions keeps the given session and other subjects', async () => {
+      const { auth, events } = setup();
+      const current = await auth.createSession({ subject: 'alice' });
+      const other = await auth.createSession({ subject: 'alice' });
+      await auth.createSession({ subject: 'bob' });
+
+      await auth.revokeOtherSessions('alice', current.sessionId);
+
+      expect((await auth.listSessions('alice')).map((s) => s.id)).toEqual([
+        current.sessionId,
+      ]);
+      expect(await auth.listSessions('bob')).toHaveLength(1);
+      expect(events.filter((e) => e.type === 'session_revoked')).toEqual([
+        {
+          type: 'session_revoked',
+          sessionId: other.sessionId,
+          subject: 'alice',
+        },
+      ]);
+    });
+
+    it("revokeOtherSessions revokes everything when the kept id is not the subject's", async () => {
+      const { auth } = setup();
+      await auth.createSession({ subject: 'alice' });
+      const bob = await auth.createSession({ subject: 'bob' });
+
+      await auth.revokeOtherSessions('alice', bob.sessionId);
+
+      expect(await auth.listSessions('alice')).toEqual([]);
+      expect(await auth.listSessions('bob')).toHaveLength(1);
+    });
+
+    it('revokeOtherSessions reports storage failures', async () => {
+      const { auth } = setup({}, new FailingListStore());
+
+      expect(await codeOf(auth.revokeOtherSessions('alice', 'x'))).toBe(
+        'storage_error',
+      );
+    });
+
+    it('listSessions reports when each session was last refreshed', async () => {
+      const { auth, clock } = setup();
+      const pair = await auth.createSession({ subject: 'user-1' });
+      clock.advance(MINUTE);
+
+      await auth.refresh({ refreshToken: pair.refreshToken });
+
+      expect(await auth.listSessions('user-1')).toMatchObject([
+        { createdAt: T0, lastRefreshedAt: T0 + MINUTE },
+      ]);
+    });
+
     it('listSessions returns active sessions with their claims', async () => {
       const { auth } = setup();
       const pair = await auth.createSession({
@@ -669,13 +987,14 @@ describe('createAuth', () => {
   });
 
   describe('configuration', () => {
-    const invalid: [string, Partial<AuthConfig>][] = [
+    const invalid: [string, Partial<AuthConfig<{ role?: string }>>][] = [
       ['a zero access ttl', { accessTokenTtlSeconds: 0 }],
       ['a negative refresh ttl', { refreshTokenTtlSeconds: -1 }],
       ['a NaN session max age', { sessionMaxAgeSeconds: Number.NaN }],
       ['an infinite access ttl', { accessTokenTtlSeconds: Infinity }],
       ['a negative grace window', { reuseGraceMs: -1 }],
       ['an unknown verification mode', { verification: 'sometimes' as never }],
+      ['an onRefresh that is not a function', { onRefresh: 'yes' as never }],
     ];
 
     it.each(invalid)('rejects %s', (_label, overrides) => {

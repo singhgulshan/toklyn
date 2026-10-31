@@ -141,10 +141,28 @@ sequenceDiagram
 ```
 
 - **Access tokens** are JWTs with `sub`, `sid` (session id), `jti`, `iat`, `exp`, plus your claims. They never outlive their session.
-- **Refresh tokens** are 256-bit random strings. Only their SHA-256 hash is stored.
+- **Refresh tokens** are `<sessionId>.<256-bit random>`. Only the SHA-256 hash of the whole string is stored, so changing the session id makes the token unknown.
 - **Sessions** have an absolute lifetime (`sessionMaxAgeSeconds`) that rotation never extends. A refresh token expires at `min(now + refreshTokenTtlSeconds, session expiry)`.
 - **Rotation** is one atomic store operation: validate, consume, insert the successor, or revoke on reuse. Two concurrent refreshes with the same token can never both succeed outside the grace window.
 - **Grace window.** `reuseGraceMs` (default `0`, strict) lets a just-consumed token be used again for a short time, for clients that legitimately send parallel refreshes. Cookie mode requires it.
+
+### Checking the user on refresh
+
+`onRefresh` runs before each refresh of an active session, so a disabled user is signed out and role changes reach the next access token:
+
+```ts
+const auth = createAuth<{ role: string }>({
+  // ...
+  async onRefresh(session) {
+    const user = await users.findById(session.subject);
+    if (!user?.active) return null; // revokes the session, refresh answers 401
+    if (user.role !== session.claims.role) return { role: user.role }; // stored and signed
+    return undefined; // keep the current claims
+  },
+});
+```
+
+The hook runs before the refresh token is consumed. If it throws, the refresh fails with `storage_error` (HTTP 503) and the same token can be retried. Returned claims are stored in the same atomic step as the rotation. Tokens issued by 0.1.0 have no session id, so for those the hook runs after rotation until the session ends.
 
 ### Verification modes
 
@@ -159,29 +177,32 @@ sequenceDiagram
 
 `createAuth<TClaims>(config)` returns an [`Auth`](packages/core/src/auth.ts) object.
 
-| Option                   | Type                         | Default      | Description                                                      |
-| ------------------------ | ---------------------------- | ------------ | ---------------------------------------------------------------- |
-| `signer`                 | `AccessTokenSigner`          | required     | Usually `new JwtAccessTokenSigner(keyConfig)`                    |
-| `verifier`               | `AccessTokenVerifier`        | required     | Usually `new JwtAccessTokenVerifier(keyConfig)`                  |
-| `sessions`               | `SessionStore`               | required     | See [Storage](#storage)                                          |
-| `accessTokenTtlSeconds`  | `number`                     | required     | Access token lifetime                                            |
-| `refreshTokenTtlSeconds` | `number`                     | required     | Lifetime of each refresh token (sliding)                         |
-| `sessionMaxAgeSeconds`   | `number`                     | required     | Absolute session lifetime from creation                          |
-| `verification`           | `'offline' \| 'online'`      | `'offline'`  | See [Verification modes](#verification-modes)                    |
-| `revocations`            | `AccessTokenRevocationStore` | none         | Denylist for single access tokens; needed by `revokeAccessToken` |
-| `reuseGraceMs`           | `number`                     | `0`          | Grace window for reusing a just-rotated refresh token            |
-| `onEvent`                | `(event: AuthEvent) => void` | none         | See [Events](#events)                                            |
-| `refreshTokens`          | `RefreshTokenCodec`          | Web Crypto   | Custom refresh-token generation and hashing                      |
-| `clock`                  | `Clock`                      | system clock | Inject time in tests                                             |
+| Option                   | Type                                       | Default      | Description                                                       |
+| ------------------------ | ------------------------------------------ | ------------ | ----------------------------------------------------------------- |
+| `signer`                 | `AccessTokenSigner`                        | required     | Usually `new JwtAccessTokenSigner(keyConfig)`                     |
+| `verifier`               | `AccessTokenVerifier`                      | required     | Usually `new JwtAccessTokenVerifier(keyConfig)`                   |
+| `sessions`               | `SessionStore`                             | required     | See [Storage](#storage)                                           |
+| `accessTokenTtlSeconds`  | `number`                                   | required     | Access token lifetime                                             |
+| `refreshTokenTtlSeconds` | `number`                                   | required     | Lifetime of each refresh token (sliding)                          |
+| `sessionMaxAgeSeconds`   | `number`                                   | required     | Absolute session lifetime from creation                           |
+| `verification`           | `'offline' \| 'online'`                    | `'offline'`  | See [Verification modes](#verification-modes)                     |
+| `revocations`            | `AccessTokenRevocationStore`               | none         | Denylist for single access tokens; needed by `revokeAccessToken`  |
+| `reuseGraceMs`           | `number`                                   | `0`          | Grace window for reusing a just-rotated refresh token             |
+| `onRefresh`              | `(session) => claims \| null \| undefined` | none         | See [Checking the user on refresh](#checking-the-user-on-refresh) |
+| `onEvent`                | `(event: AuthEvent) => void`               | none         | See [Events](#events)                                             |
+| `refreshTokens`          | `RefreshTokenCodec`                        | Web Crypto   | Custom refresh-token generation and hashing                       |
+| `clock`                  | `Clock`                                    | system clock | Inject time in tests                                              |
 
 | Method                                           | Description                                                                                           |
 | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
 | `createSession({ subject, claims?, metadata? })` | Starts a session and returns a `TokenPair`                                                            |
 | `refresh({ refreshToken, claims? })`             | Rotates the refresh token; `claims` replaces the stored claims, for example after a role change       |
+| `logout(refreshToken)`                           | Revokes the token's session; ignores invalid or already revoked tokens                                |
 | `verifyAccessToken(token)`                       | Returns the typed claims or throws a `ToklynError`                                                    |
 | `revokeSession(sessionId)`                       | Revokes one session (idempotent)                                                                      |
 | `revokeAllSessions(subject)`                     | Signs a user out everywhere                                                                           |
-| `listSessions(subject)`                          | Active sessions, for a "your devices" page                                                            |
+| `revokeOtherSessions(subject, keepSessionId)`    | Signs a user out everywhere except the current session (`claims.sid`)                                 |
+| `listSessions(subject)`                          | Active sessions with `createdAt` and `lastRefreshedAt`, for a "your devices" page                     |
 | `revokeAccessToken(token)`                       | Denylists one access token until it expires; requires `revocations` and takes effect in `online` mode |
 
 ## Signing keys
@@ -267,6 +288,17 @@ The default, for SPAs and API clients.
 - `resolve(request)` refreshes an expired access cookie in middleware and returns the cookies to forward, so the page sees the new token in the same request.
 - Requires `reuseGraceMs > 0` on `auth` (10 seconds works well), because a page load can trigger several parallel requests with the same refresh cookie.
 
+### Optional authentication
+
+For routes that serve guests and signed-in users, `authenticateOptional(request, options?)` returns `claims: null` when there is no access token. In cookie mode, untrusted cross-site writes are treated as guests.
+
+| `invalidToken`       | Invalid or expired token                                    |
+| -------------------- | ----------------------------------------------------------- |
+| `'reject'` (default) | `401`, so the client refreshes instead of seeing guest data |
+| `'ignore'`           | Treated as a guest                                          |
+
+Storage errors in `online` mode always give `503`. The adapters expose it as `optionalAuth()` (Express), `@ToklynOptional()` (NestJS) and `withOptionalAuth()` (Next.js).
+
 ### HTTP options
 
 | Option           | Type                   | Default                                           | Description                                                                            |
@@ -291,12 +323,13 @@ Every option is validated when you call `createToklynHttp`; an invalid value thr
 
 ### Responses
 
-| Handler         | Success                                 | Failure                                                                                                          |
-| --------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `issue(tokens)` | `200`, cookies, session body            | none                                                                                                             |
-| `authenticate`  | claims                                  | `401` (with `WWW-Authenticate: Bearer` in bearer mode), `403` untrusted write in cookie mode, `503` storage down |
-| `refresh`       | `200`, new cookies, session body        | `403` untrusted origin, `401` and cookies cleared, `503` with cookies kept                                       |
-| `logout`        | `204`, cookies cleared, session revoked | `403` untrusted origin, `503`                                                                                    |
+| Handler                | Success                                 | Failure                                                                                                          |
+| ---------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `issue(tokens)`        | `200`, cookies, session body            | none                                                                                                             |
+| `authenticate`         | claims                                  | `401` (with `WWW-Authenticate: Bearer` in bearer mode), `403` untrusted write in cookie mode, `503` storage down |
+| `authenticateOptional` | claims, or `null` for a guest           | `401` invalid token (unless `invalidToken: 'ignore'`), `503` storage down                                        |
+| `refresh`              | `200`, new cookies, session body        | `403` untrusted origin, `401` and cookies cleared, `503` with cookies kept                                       |
+| `logout`               | `204`, cookies cleared, session revoked | `403` untrusted origin, `503`                                                                                    |
 
 All responses carry `Cache-Control: no-store`. Every authentication failure returns the same `{"error":"unauthorized"}` body, so a client cannot tell an expired token from a forged one.
 
@@ -305,7 +338,7 @@ All responses carry `Cache-Control: no-store`. Every authentication failure retu
 ### Express
 
 ```ts
-import { createToklynExpress, getAuth } from '@toklyn/express';
+import { createToklynExpress, getAuth, getOptionalAuth } from '@toklyn/express';
 
 const toklyn = createToklynExpress(auth);
 
@@ -321,6 +354,9 @@ app.post('/api/refresh', toklyn.refreshHandler);
 app.post('/api/logout', toklyn.logoutHandler);
 app.get('/api/me', toklyn.requireAuth, (req, res) =>
   res.json(getAuth<AppClaims>(req)),
+);
+app.get('/api/feed', toklyn.optionalAuth(), (req, res) =>
+  res.json(feedFor(getOptionalAuth(req)?.sub ?? null)),
 );
 ```
 
@@ -341,6 +377,12 @@ export class MeController {
   me(@ToklynClaims() claims: AccessTokenClaims<AppClaims>) {
     return claims;
   }
+
+  @ToklynOptional()
+  @Get('feed')
+  feed(@ToklynClaims() claims: AccessTokenClaims<AppClaims> | null) {
+    return feedFor(claims?.sub ?? null);
+  }
 }
 ```
 
@@ -357,6 +399,11 @@ export const POST = toklyn.refresh;
 // app/api/me/route.ts
 export const GET = toklyn.withAuth((request, { claims }) =>
   Response.json(claims),
+);
+
+// app/api/feed/route.ts: claims is null for guests
+export const GET = toklyn.withOptionalAuth((request, { claims }) =>
+  Response.json(feedFor(claims?.sub ?? null)),
 );
 ```
 
@@ -382,7 +429,7 @@ More in the [`@toklyn/next` README](packages/next), [`examples/next`](examples/n
 | `RedisSessionStore`, `RedisAccessTokenRevocationStore`   | [`@toklyn/redis`](packages/redis)                          | Production: Redis 6.2+, built for Valkey, Upstash and Redis Cluster |
 | Your own                                                 | implement [`SessionStore`](packages/core/src/contracts.ts) | Any database with atomic updates                                    |
 
-A custom `SessionStore` must make `rotate` atomic. Check your implementation with the contract suites from `toklyn/testing` (requires [Vitest](https://vitest.dev)):
+A custom `SessionStore` must make `rotate` atomic and set `session.lastRefreshedAt` on every successful rotation. Check your implementation with the contract suites from `toklyn/testing` (requires [Vitest](https://vitest.dev)):
 
 ```ts
 import { revocationStoreContract, sessionStoreContract } from 'toklyn/testing';

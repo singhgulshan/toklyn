@@ -1,14 +1,15 @@
 // Timestamps are epoch-ms strings; '' stands for null. Claims and metadata are opaque JSON
 // strings, never decoded here, because cjson turns empty arrays into objects.
 
-/** KEYS: session, token, subject. ARGV: session fields, token fields, ttl. */
+/** KEYS: session, token, subject. ARGV: session fields, token fields, ttl, lastRefreshedAt. */
 export const CREATE_SESSION = `
 if redis.call('EXISTS', KEYS[1]) == 1 or redis.call('EXISTS', KEYS[2]) == 1 then
   return 0
 end
 local ttl = tonumber(ARGV[12])
 redis.call('HSET', KEYS[1], 'id', ARGV[1], 'subject', ARGV[2], 'claims', ARGV[3],
-  'metadata', ARGV[4], 'createdAt', ARGV[5], 'expiresAt', ARGV[6], 'revokedAt', ARGV[7])
+  'metadata', ARGV[4], 'createdAt', ARGV[5], 'expiresAt', ARGV[6], 'revokedAt', ARGV[7],
+  'lastRefreshedAt', ARGV[13])
 redis.call('PEXPIRE', KEYS[1], ttl)
 redis.call('HSET', KEYS[2], 'sessionId', ARGV[8], 'issuedAt', ARGV[9],
   'expiresAt', ARGV[10], 'consumedAt', ARGV[11])
@@ -57,6 +58,7 @@ if redis.call('EXISTS', KEYS[2]) == 1 then
 end
 
 if t[2] == '' then redis.call('HSET', KEYS[1], 'consumedAt', ARGV[2]) end
+redis.call('HSET', skey, 'lastRefreshedAt', ARGV[2])
 if ARGV[5] == '1' then redis.call('HSET', skey, 'claims', ARGV[6]) end
 local expiresAt = string.format('%.0f',
   math.min(now + tonumber(ARGV[3]), sessionExpiresAt))

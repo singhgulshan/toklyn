@@ -57,16 +57,21 @@ The login response contains the access token in its JSON body and sets the refre
 
 `options` are the [HTTP options](https://github.com/singhgulshan/toklyn#http-options) of `toklyn/http` (`accessToken`, `cookie`, `accessCookie`, `allowedOrigins`, `clock`). Returns:
 
-| Member                     | Description                                                                |
-| -------------------------- | -------------------------------------------------------------------------- |
-| `requireAuth`              | Middleware. Responds `401` unless the request has a valid access token     |
-| `refreshHandler`           | Mount on `POST`. Rotates the refresh cookie and returns a new access token |
-| `logoutHandler`            | Mount on `POST`. Revokes the session and clears the cookie; responds `204` |
-| `sendSession(res, tokens)` | Sends the login response after `auth.createSession`                        |
+| Member                     | Description                                                                                                                       |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `requireAuth`              | Middleware. Responds `401` unless the request has a valid access token                                                            |
+| `optionalAuth(options?)`   | Middleware that lets guests through. `{ invalidToken: 'ignore' }` also treats invalid tokens as guests; the default answers `401` |
+| `refreshHandler`           | Mount on `POST`. Rotates the refresh cookie and returns a new access token                                                        |
+| `logoutHandler`            | Mount on `POST`. Revokes the session and clears the cookie; responds `204`                                                        |
+| `sendSession(res, tokens)` | Sends the login response after `auth.createSession`                                                                               |
 
 ### `getAuth<TClaims>(req)`
 
-Returns the verified claims of the current request. Throws if `requireAuth` did not run on the route.
+Returns the verified claims of the current request. Throws if `requireAuth` did not run on the route, or if the request is a guest.
+
+### `getOptionalAuth<TClaims>(req)`
+
+Returns the claims, or `null` for a guest. Throws if neither `optionalAuth` nor `requireAuth` ran on the route.
 
 ## Links
 

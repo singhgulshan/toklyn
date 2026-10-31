@@ -38,6 +38,7 @@ function newSession(overrides: Partial<Session> = {}): NewSession {
     claims: { role: 'admin' },
     metadata: {},
     createdAt: T0,
+    lastRefreshedAt: T0,
     expiresAt: T0 + 2 * HOUR,
     revokedAt: null,
     ...overrides,
@@ -147,6 +148,23 @@ describe('RedisSessionStore', () => {
 
     expect(await store.listForSubject('user-1', T0)).toEqual([]);
     expect(await redis.io.smembers(`${keyPrefix}u:user-1`)).toEqual([]);
+  });
+
+  it('reads sessions written without lastRefreshedAt (0.1.0)', async () => {
+    const { store, keyPrefix } = setup();
+    await store.create(newSession());
+    await redis.io.hdel(`${keyPrefix}s:session-1`, 'lastRefreshedAt');
+
+    expect((await store.find('session-1'))?.lastRefreshedAt).toBe(T0);
+
+    await store.rotate({
+      presentedHash: 'hash-1',
+      newHash: 'hash-2',
+      now: T0 + 1000,
+      refreshTtlMs: HOUR,
+      reuseGraceMs: 0,
+    });
+    expect((await store.find('session-1'))?.lastRefreshedAt).toBe(T0 + 1000);
   });
 
   it('reports a malformed reply as a storage error', async () => {

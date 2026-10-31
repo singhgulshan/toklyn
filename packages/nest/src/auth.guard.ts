@@ -1,9 +1,10 @@
 import { HttpException, Inject, Injectable } from '@nestjs/common';
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { HttpAdapterHost, Reflector } from '@nestjs/core';
-import type { ToklynHttp } from 'toklyn/http';
+import type { OptionalAuthOptions, ToklynHttp } from 'toklyn/http';
 import {
   TOKLYN_HTTP,
+  TOKLYN_OPTIONAL,
   TOKLYN_PUBLIC,
   claimsByRequest,
   toHttpRequest,
@@ -13,7 +14,8 @@ import type { NodeStyleRequest } from './internal.js';
 
 /**
  * Requires a valid access token. Use per route with `@UseGuards`, or app-wide as `APP_GUARD`
- * and opt routes out with `@ToklynPublic()`. Non-HTTP contexts are denied.
+ * and opt routes out with `@ToklynPublic()` or let guests in with `@ToklynOptional()`.
+ * Non-HTTP contexts are denied.
  */
 @Injectable()
 export class ToklynAuthGuard implements CanActivate {
@@ -24,16 +26,23 @@ export class ToklynAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const targets = [context.getHandler(), context.getClass()];
     const isPublic = this.reflector.getAllAndOverride<boolean | undefined>(
       TOKLYN_PUBLIC,
-      [context.getHandler(), context.getClass()],
+      targets,
     );
     if (isPublic === true) return true;
     if (context.getType() !== 'http') return false;
+    const optional = this.reflector.getAllAndOverride<
+      OptionalAuthOptions | undefined
+    >(TOKLYN_OPTIONAL, targets);
 
     const http = context.switchToHttp();
     const req = http.getRequest<NodeStyleRequest>();
-    const result = await this.http.authenticate(toHttpRequest(req));
+    const request = toHttpRequest(req);
+    const result = optional
+      ? await this.http.authenticateOptional(request, optional)
+      : await this.http.authenticate(request);
     if (result.ok) {
       claimsByRequest.set(req, result.claims);
       return true;

@@ -100,14 +100,15 @@ Use `ToklynModule.forRootAsync({ imports, inject, useFactory })` when `auth` com
 
 ## API
 
-| Export                                                         | Description                                                                                                               |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `ToklynModule.forRoot({ auth, ...httpOptions })`               | Global module. `httpOptions` are the [HTTP options](https://github.com/singhgulshan/toklyn#http-options) of `toklyn/http` |
-| `ToklynModule.forRootAsync({ imports?, inject?, useFactory })` | Same, with options from a factory                                                                                         |
-| `ToklynAuthGuard`                                              | Requires a valid access token. Use with `@UseGuards()` or as `APP_GUARD`. Non-HTTP contexts are denied                    |
-| `@ToklynPublic()`                                              | Skips the guard for a route or controller                                                                                 |
-| `@ToklynClaims()`                                              | Injects the verified claims. Throws if the guard did not run                                                              |
-| `ToklynSessionService`                                         | `sendSession(res, tokens)`, `refresh(req, res)`, `logout(req, res)`                                                       |
+| Export                                                         | Description                                                                                                                                         |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ToklynModule.forRoot({ auth, ...httpOptions })`               | Global module. `httpOptions` are the [HTTP options](https://github.com/singhgulshan/toklyn#http-options) of `toklyn/http`                           |
+| `ToklynModule.forRootAsync({ imports?, inject?, useFactory })` | Same, with options from a factory                                                                                                                   |
+| `ToklynAuthGuard`                                              | Requires a valid access token. Use with `@UseGuards()` or as `APP_GUARD`. Non-HTTP contexts are denied                                              |
+| `@ToklynPublic()`                                              | Skips the guard for a route or controller                                                                                                           |
+| `@ToklynOptional(options?)`                                    | Lets guests through the guard. `{ invalidToken: 'ignore' }` also treats invalid tokens as guests; the default answers `401`. `@ToklynPublic()` wins |
+| `@ToklynClaims()`                                              | Injects the verified claims, or `null` for a guest on a `@ToklynOptional()` route. Throws if the guard did not run                                  |
+| `ToklynSessionService`                                         | `sendSession(res, tokens)`, `refresh(req, res)`, `logout(req, res)`                                                                                 |
 
 ## Links
 

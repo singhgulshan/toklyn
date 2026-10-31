@@ -55,6 +55,7 @@ export class MemorySessionStore implements SessionStore {
     if (now >= presented.expiresAt) return { status: 'token_expired' };
 
     presented.consumedAt ??= now;
+    session.lastRefreshedAt = now;
     if (claims) session.claims = structuredClone(claims);
     const successor: RefreshTokenRecord = {
       hash: newHash,

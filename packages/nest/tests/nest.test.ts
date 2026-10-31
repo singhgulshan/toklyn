@@ -26,6 +26,7 @@ import {
   ToklynAuthGuard,
   ToklynClaims,
   ToklynModule,
+  ToklynOptional,
   ToklynPublic,
   ToklynSessionService,
 } from '#src/index.js';
@@ -92,6 +93,18 @@ class SessionController {
   @Get('misconfigured')
   misconfigured(@ToklynClaims() claims: AccessTokenClaims) {
     return claims;
+  }
+
+  @ToklynOptional()
+  @Get('feed')
+  feed(@ToklynClaims() claims: AccessTokenClaims | null) {
+    return { sub: claims?.sub ?? null };
+  }
+
+  @ToklynOptional({ invalidToken: 'ignore' })
+  @Get('feed-lenient')
+  feedLenient(@ToklynClaims() claims: AccessTokenClaims | null) {
+    return { sub: claims?.sub ?? null };
   }
 }
 
@@ -298,6 +311,24 @@ describe.each(Object.entries(platforms))('@toklyn/nest on %s', (_, adapter) => {
       bodies.add(await response.text());
     }
     expect([...bodies]).toEqual(['{"error":"unauthorized"}']);
+  });
+
+  it('lets guests through @ToklynOptional() and still rejects bad tokens by default', async () => {
+    const { call } = await start(GlobalGuardModule);
+    const { accessToken } = await login(call);
+    const bad = { headers: { authorization: 'Bearer not.a.jwt' } };
+
+    const signedIn = await call('/feed', {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    const guest = await call('/feed');
+    const rejected = await call('/feed', bad);
+    const ignored = await call('/feed-lenient', bad);
+
+    expect(await signedIn.json()).toEqual({ sub: 'u1' });
+    expect(await guest.json()).toEqual({ sub: null });
+    expect(rejected.status).toBe(401);
+    expect(await ignored.json()).toEqual({ sub: null });
   });
 
   it('honours @ToklynPublic() on a controller', async () => {

@@ -11,12 +11,19 @@ export function parseSession(reply: unknown): Session | null {
     return null;
   }
   const fields = parseHash(reply);
+  const createdAt = parseTimestamp(field(fields, 'createdAt'));
+  // Sessions written by 0.1.0 have no lastRefreshedAt.
+  const lastRefreshedAt = fields.get('lastRefreshedAt');
   return {
     id: field(fields, 'id'),
     subject: field(fields, 'subject'),
     claims: parseJsonObject(field(fields, 'claims')) as CustomClaims,
     metadata: parseJsonObject(field(fields, 'metadata')) as SessionMetadata,
-    createdAt: parseTimestamp(field(fields, 'createdAt')),
+    createdAt,
+    lastRefreshedAt:
+      lastRefreshedAt === undefined
+        ? createdAt
+        : parseTimestamp(lastRefreshedAt),
     expiresAt: parseTimestamp(field(fields, 'expiresAt')),
     revokedAt: parseNullableTimestamp(field(fields, 'revokedAt')),
   };

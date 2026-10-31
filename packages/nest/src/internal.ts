@@ -4,9 +4,10 @@ import type { HttpHeaders, ToklynHttpRequest } from 'toklyn/http';
 
 export const TOKLYN_HTTP = Symbol('toklyn:http');
 export const TOKLYN_PUBLIC = 'toklyn:public';
+export const TOKLYN_OPTIONAL = 'toklyn:optional';
 
-// Request-scoped storage instead of a global request type augmentation.
-export const claimsByRequest = new WeakMap<object, AccessTokenClaims>();
+// Request-scoped storage instead of a global request type augmentation. Null means guest.
+export const claimsByRequest = new WeakMap<object, AccessTokenClaims | null>();
 
 /** Both the Express and Fastify request objects expose `method` and Node's lower-case `headers`. */
 export interface NodeStyleRequest {

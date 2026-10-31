@@ -7,6 +7,7 @@ import type { ToklynNext } from './internal.js';
 export type {
   ToklynAuthContext,
   ToklynNext,
+  ToklynOptionalAuthContext,
   ToklynRouteHandler,
 } from './internal.js';
 

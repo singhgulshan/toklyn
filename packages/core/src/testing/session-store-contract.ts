@@ -15,6 +15,7 @@ function makeSession(overrides: Partial<Session> = {}): Session {
     claims: { role: 'admin' },
     metadata: { userAgent: 'test' },
     createdAt: T0,
+    lastRefreshedAt: T0,
     expiresAt: T0 + SESSION_LIFETIME,
     revokedAt: null,
     ...overrides,
@@ -222,6 +223,48 @@ export function sessionStoreContract(
         const result = await store.rotate(rotateInput());
 
         expect(result.status).toBe('session_revoked');
+      });
+    });
+
+    describe('lastRefreshedAt', () => {
+      it('records the time of a successful rotation', async () => {
+        const { store, session } = await seed();
+        const now = T0 + MINUTE;
+
+        const result = await store.rotate(rotateInput({ now }));
+
+        expect(result.status).toBe('rotated');
+        if (result.status !== 'rotated') return;
+        expect(result.session.lastRefreshedAt).toBe(now);
+        expect((await store.find(session.id))?.lastRefreshedAt).toBe(now);
+      });
+
+      it('records a rotation inside the reuse grace window', async () => {
+        const { store, session } = await seed();
+        await store.rotate(rotateInput({ now: T0 + MINUTE }));
+        const now = T0 + MINUTE + 5_000;
+
+        await store.rotate(
+          rotateInput({ newHash: 'hash-3', now, reuseGraceMs: 10_000 }),
+        );
+
+        expect((await store.find(session.id))?.lastRefreshedAt).toBe(now);
+      });
+
+      it('is left alone when the rotation is refused', async () => {
+        const { store, session } = await seed();
+        await store.rotate(rotateInput({ now: T0 + MINUTE }));
+
+        await store.rotate(
+          rotateInput({ newHash: 'hash-3', now: T0 + 2 * MINUTE }),
+        );
+        await store.rotate(
+          rotateInput({ presentedHash: 'never-issued', now: T0 + 3 * MINUTE }),
+        );
+
+        expect((await store.find(session.id))?.lastRefreshedAt).toBe(
+          T0 + MINUTE,
+        );
       });
     });
 

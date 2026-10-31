@@ -178,6 +178,75 @@ describe('createToklynHttp', () => {
     });
   });
 
+  describe('authenticateOptional', () => {
+    const GUEST = { ok: true, claims: null };
+
+    it('returns the claims for a valid token and null without one', async () => {
+      const { auth, http } = setup();
+      const tokens = await auth.createSession({ subject: 'u1' });
+
+      const signedIn = await http.authenticateOptional(
+        request({ authorization: `Bearer ${tokens.accessToken}` }),
+      );
+
+      expect(signedIn.ok && signedIn.claims?.sub).toBe('u1');
+      expect(await http.authenticateOptional(request())).toEqual(GUEST);
+      expect(
+        await http.authenticateOptional(request({ authorization: 'Basic x' })),
+      ).toEqual(GUEST);
+    });
+
+    it('rejects invalid and expired tokens with 401 by default', async () => {
+      const { auth, http, clock } = setup();
+      const { accessToken } = await auth.createSession({ subject: 'u1' });
+      clock.time += 901_000;
+
+      for (const token of ['nope', accessToken]) {
+        const result = await http.authenticateOptional(
+          request({ authorization: `Bearer ${token}` }),
+        );
+        expect(!result.ok && result.response.status).toBe(401);
+      }
+    });
+
+    it('treats invalid and expired tokens as guests with invalidToken "ignore"', async () => {
+      const { auth, http, clock } = setup();
+      const { accessToken } = await auth.createSession({ subject: 'u1' });
+      clock.time += 901_000;
+
+      for (const token of ['nope', accessToken]) {
+        expect(
+          await http.authenticateOptional(
+            request({ authorization: `Bearer ${token}` }),
+            { invalidToken: 'ignore' },
+          ),
+        ).toEqual(GUEST);
+      }
+    });
+
+    it('still fails closed with 503 when it ignores invalid tokens', async () => {
+      const { auth, http, store } = setup({ verification: 'online' });
+      const { accessToken } = await auth.createSession({ subject: 'u1' });
+      store.failFind = true;
+
+      const result = await http.authenticateOptional(
+        request({ authorization: `Bearer ${accessToken}` }),
+        { invalidToken: 'ignore' },
+      );
+
+      expect(!result.ok && result.response.status).toBe(503);
+    });
+
+    it('rejects an unknown invalidToken value', async () => {
+      const { http } = setup();
+      await expect(
+        http.authenticateOptional(request(), {
+          invalidToken: 'maybe' as never,
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_config' });
+    });
+  });
+
   describe('refresh', () => {
     it('rotates the cookie and returns a new access token', async () => {
       const { auth, http } = setup();
@@ -188,7 +257,7 @@ describe('createToklynHttp', () => {
       expect(response.status).toBe(200);
       const rotated = cookieValue(response);
       expect(rotated).not.toBe(tokens.refreshToken);
-      expect(rotated).toHaveLength(43);
+      expect(rotated?.startsWith(`${tokens.sessionId}.`)).toBe(true);
       expect(response.body).toMatchObject({ sessionId: tokens.sessionId });
     });
 
@@ -260,6 +329,36 @@ describe('createToklynHttp', () => {
       expect(response.status).toBe(503);
       expect(header(response, 'Set-Cookie')).toEqual([]);
       store.failRotate = false;
+      expect((await http.refresh(browser(tokens.refreshToken))).status).toBe(
+        200,
+      );
+    });
+
+    it('clears the cookie with a 401 when onRefresh rejects the session', async () => {
+      const { auth, http } = setup({ onRefresh: () => null });
+      const tokens = await auth.createSession({ subject: 'u1' });
+
+      const response = await http.refresh(browser(tokens.refreshToken));
+
+      expect(response.status).toBe(401);
+      expect(header(response, 'Set-Cookie')).toEqual([CLEARED]);
+      expect(await auth.listSessions('u1')).toEqual([]);
+    });
+
+    it('keeps the cookie with a 503 when onRefresh throws', async () => {
+      let fail = true;
+      const { auth, http } = setup({
+        onRefresh: () => {
+          if (fail) throw new Error('user db down');
+        },
+      });
+      const tokens = await auth.createSession({ subject: 'u1' });
+
+      const response = await http.refresh(browser(tokens.refreshToken));
+
+      expect(response.status).toBe(503);
+      expect(header(response, 'Set-Cookie')).toEqual([]);
+      fail = false;
       expect((await http.refresh(browser(tokens.refreshToken))).status).toBe(
         200,
       );
@@ -492,6 +591,43 @@ describe('createToklynHttp in cookie mode', () => {
       for (const method of ['GET', 'head', 'OPTIONS']) {
         expect((await http.authenticate(page(cookie, method))).ok).toBe(true);
       }
+    });
+  });
+
+  describe('authenticateOptional', () => {
+    it('reads the access cookie and treats untrusted writes as guests', async () => {
+      const { auth, http } = cookieSetup();
+      const tokens = await auth.createSession({ subject: 'u1' });
+      const cookie = cookies(tokens);
+
+      const read = await http.authenticateOptional(page(cookie));
+      const trusted = await http.authenticateOptional(
+        request({ cookie, origin: ORIGIN }, 'POST'),
+      );
+      const crossSite = await http.authenticateOptional(
+        request({ cookie, origin: 'https://evil.example' }, 'POST'),
+      );
+
+      expect(read.ok && read.claims?.sub).toBe('u1');
+      expect(trusted.ok && trusted.claims?.sub).toBe('u1');
+      expect(crossSite).toEqual({ ok: true, claims: null });
+      expect(await http.authenticateOptional(page('theme=dark'))).toEqual({
+        ok: true,
+        claims: null,
+      });
+    });
+
+    it('answers 401 or ignores an invalid access cookie', async () => {
+      const { http } = cookieSetup();
+      const cookie = cookies({ accessToken: 'nope' });
+
+      const rejected = await http.authenticateOptional(page(cookie));
+      const ignored = await http.authenticateOptional(page(cookie), {
+        invalidToken: 'ignore',
+      });
+
+      expect(!rejected.ok && rejected.response.status).toBe(401);
+      expect(ignored).toEqual({ ok: true, claims: null });
     });
   });
 
