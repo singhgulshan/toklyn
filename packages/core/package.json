@@ -3,6 +3,25 @@
   "version": "0.0.0",
   "license": "MIT",
   "description": "Access and refresh token sessions with rotation, reuse detection and pluggable storage.",
+  "keywords": [
+    "auth",
+    "authentication",
+    "jwt",
+    "access-token",
+    "refresh-token",
+    "token-rotation",
+    "session",
+    "cookie",
+    "typescript"
+  ],
+  "author": "Gulshan Kumar Singh",
+  "homepage": "https://github.com/singhgulshan/toklyn/tree/main/packages/core#readme",
+  "bugs": "https://github.com/singhgulshan/toklyn/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/singhgulshan/toklyn.git",
+    "directory": "packages/core"
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",
@@ -44,6 +63,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "imports": {
     "#src/*": "./src/*"
   },
@@ -52,6 +74,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "prepublishOnly": "pnpm run build",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:edge": "vitest run --environment edge-runtime",

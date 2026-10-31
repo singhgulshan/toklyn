@@ -3,6 +3,23 @@
   "version": "0.0.0",
   "license": "MIT",
   "description": "Redis session and access-token revocation stores for toklyn.",
+  "keywords": [
+    "toklyn",
+    "redis",
+    "valkey",
+    "upstash",
+    "session-store",
+    "auth",
+    "refresh-token"
+  ],
+  "author": "Gulshan Kumar Singh",
+  "homepage": "https://github.com/singhgulshan/toklyn/tree/main/packages/redis#readme",
+  "bugs": "https://github.com/singhgulshan/toklyn/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/singhgulshan/toklyn.git",
+    "directory": "packages/redis"
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",
@@ -24,6 +41,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "imports": {
     "#src/*": "./src/*"
   },
@@ -32,6 +52,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "prepublishOnly": "pnpm run build",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "check:exports": "attw --pack . --profile node16"

@@ -3,6 +3,25 @@
   "version": "0.0.0",
   "license": "MIT",
   "description": "Next.js App Router helpers for toklyn sessions: route handlers, proxy and server components.",
+  "keywords": [
+    "toklyn",
+    "next",
+    "nextjs",
+    "app-router",
+    "auth",
+    "authentication",
+    "jwt",
+    "refresh-token",
+    "ssr"
+  ],
+  "author": "Gulshan Kumar Singh",
+  "homepage": "https://github.com/singhgulshan/toklyn/tree/main/packages/next#readme",
+  "bugs": "https://github.com/singhgulshan/toklyn/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/singhgulshan/toklyn.git",
+    "directory": "packages/next"
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",
@@ -34,6 +53,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "imports": {
     "#src/*": "./src/*"
   },
@@ -42,6 +64,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "prepublishOnly": "pnpm run build",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:edge": "vitest run --environment edge-runtime",
