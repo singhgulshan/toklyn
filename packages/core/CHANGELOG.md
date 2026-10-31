@@ -1,5 +1,24 @@
 # toklyn
 
+## 0.2.0
+
+### Minor Changes
+
+- 002877f: Add optional authentication for routes that serve guests and signed-in users: `authenticateOptional()` in `toklyn/http`, `optionalAuth()` and `getOptionalAuth()` in Express, `@ToklynOptional()` in NestJS and `withOptionalAuth()` in Next.js. Guests get `null` claims. An invalid or expired token answers `401` by default; pass `{ invalidToken: 'ignore' }` to treat it as a guest.
+- 002877f: Add `onRefresh` to `createAuth`: runs before each refresh of an active session and can keep, replace (stored atomically with the rotation) or reject (revokes the session) its claims. If it throws, nothing is consumed and the refresh fails with `storage_error`.
+
+  Add `auth.logout(refreshToken)`, which revokes the token's session without signing new tokens or emitting `token_refreshed`. The HTTP `logout` flow now uses it.
+
+  Refresh tokens now start with their session id (`<sessionId>.<random>`); the whole string is hashed. Tokens issued by 0.1.0 keep working.
+
+  `AuthConfig` is now generic (`AuthConfig<TClaims>`). A config typed as plain `AuthConfig` passed to `createAuth<MyClaims>()` needs `AuthConfig<MyClaims>`.
+
+- 002877f: Sessions now have `lastRefreshedAt`: equal to `createdAt` at first, then updated by every successful refresh. In the default `offline` mode access tokens are verified without the store, so this is the last refresh, not the last request.
+
+  Add `auth.revokeOtherSessions(subject, keepSessionId)` for "sign out other devices".
+
+  `Session.lastRefreshedAt` is required, so custom `SessionStore` implementations must store it and set it in `rotate`; the contract suite checks this. `RedisSessionStore` reads sessions written by `@toklyn/redis` 0.1.0 with `lastRefreshedAt` equal to `createdAt`.
+
 ## 0.1.0
 
 ### Minor Changes
