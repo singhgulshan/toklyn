@@ -3,7 +3,7 @@ import {
   fromArrayEval,
   fromOptionsEval,
   fromVariadicEval,
-} from '#src/index.js';
+} from '#src/redis/index.js';
 
 const keys = ['k1', 'k2'];
 const args = ['a1'];

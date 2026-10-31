@@ -11,7 +11,7 @@ import {
   fromUnsafeQuery,
   fromVariadicQuery,
   migrate,
-} from '#src/index.js';
+} from '#src/postgres/index.js';
 import type { TestDatabase } from './postgres.js';
 import {
   POSTGRES_URL,

@@ -1,4 +1,4 @@
-import { malformed } from '#src/codec.js';
+import { malformed } from '#src/postgres/codec.js';
 
 /** A result row keyed by column name. */
 export type PostgresRow = Record<string, unknown>;

@@ -1,5 +1,11 @@
-import { ToklynError } from 'toklyn';
 import type { CustomClaims, Session, SessionMetadata } from 'toklyn';
+import { replyParsers } from '#src/shared/reply.js';
+
+const parsers = replyParsers('Redis');
+
+export const { malformed, parseInteger: parseTimestamp } = parsers;
+
+const { parseJsonObject } = parsers;
 
 export function serializeTimestamp(value: number | null): string {
   return value === null ? '' : String(value);
@@ -38,13 +44,6 @@ export function parseSessionList(reply: unknown): Session[] {
   });
 }
 
-export function parseTimestamp(value: unknown): number {
-  const parsed =
-    typeof value === 'string' && value !== '' ? Number(value) : NaN;
-  if (!Number.isSafeInteger(parsed)) throw malformed();
-  return parsed;
-}
-
 function parseNullableTimestamp(value: string): number | null {
   return value === '' ? null : parseTimestamp(value);
 }
@@ -65,23 +64,4 @@ function field(fields: Map<string, string>, name: string): string {
   const value = fields.get(name);
   if (value === undefined) throw malformed();
   return value;
-}
-
-function parseJsonObject(value: string): Record<string, unknown> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch (cause) {
-    throw malformed(cause);
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw malformed();
-  }
-  return parsed as Record<string, unknown>;
-}
-
-export function malformed(cause?: unknown): ToklynError {
-  return new ToklynError('storage_error', 'Unexpected reply from Redis', {
-    cause,
-  });
 }

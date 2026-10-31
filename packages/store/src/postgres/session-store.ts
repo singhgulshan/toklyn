@@ -5,7 +5,7 @@ import type {
   Session,
   SessionStore,
 } from 'toklyn';
-import type { PostgresClient } from '#src/client.js';
+import type { PostgresClient } from '#src/postgres/client.js';
 import {
   SESSION_COLUMNS,
   malformed,
@@ -14,9 +14,9 @@ import {
   text,
   toEpochMs,
   toTimestamp,
-} from '#src/codec.js';
-import { resolveNames } from '#src/schema.js';
-import type { PostgresSchemaOptions } from '#src/schema.js';
+} from '#src/postgres/codec.js';
+import { resolveNames } from '#src/postgres/schema.js';
+import type { PostgresSchemaOptions } from '#src/postgres/schema.js';
 
 export interface PostgresSessionStoreOptions extends PostgresSchemaOptions {
   client: PostgresClient;

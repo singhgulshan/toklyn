@@ -1,38 +1,48 @@
 {
-  "name": "@toklyn/postgres",
+  "name": "@toklyn/store",
   "version": "0.1.0",
   "license": "MIT",
-  "description": "PostgreSQL session and access-token revocation stores for toklyn.",
+  "description": "PostgreSQL and Redis session and access-token revocation stores for toklyn.",
   "keywords": [
     "toklyn",
+    "session-store",
     "postgres",
     "postgresql",
-    "session-store",
+    "redis",
+    "valkey",
+    "upstash",
     "auth",
     "refresh-token"
   ],
   "author": "Gulshan Kumar Singh",
-  "homepage": "https://github.com/singhgulshan/toklyn/tree/main/packages/postgres#readme",
+  "homepage": "https://github.com/singhgulshan/toklyn/tree/main/packages/store#readme",
   "bugs": "https://github.com/singhgulshan/toklyn/issues",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/singhgulshan/toklyn.git",
-    "directory": "packages/postgres"
+    "directory": "packages/store"
   },
   "type": "module",
   "sideEffects": false,
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "exports": {
-    ".": {
+    "./postgres": {
       "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
+        "types": "./dist/postgres/index.d.ts",
+        "default": "./dist/postgres/index.js"
       },
       "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
+        "types": "./dist/postgres/index.d.cts",
+        "default": "./dist/postgres/index.cjs"
+      }
+    },
+    "./redis": {
+      "import": {
+        "types": "./dist/redis/index.d.ts",
+        "default": "./dist/redis/index.js"
+      },
+      "require": {
+        "types": "./dist/redis/index.d.cts",
+        "default": "./dist/redis/index.cjs"
       }
     },
     "./package.json": "./package.json"
@@ -64,8 +74,10 @@
     "@electric-sql/pglite": "^0.5.13",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
+    "ioredis": "^6.0.0",
     "pg": "^8.23.1",
     "postgres": "^4.0.0",
+    "redis": "^6.3.1",
     "toklyn": "workspace:^",
     "tsup": "^9.0.0",
     "vitest": "^5.0.5"

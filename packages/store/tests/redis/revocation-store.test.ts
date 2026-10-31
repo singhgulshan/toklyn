@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   RedisAccessTokenRevocationStore,
   fromVariadicEval,
-} from '#src/index.js';
+} from '#src/redis/index.js';
 import { useRedis } from './redis.js';
 
 const redis = useRedis();

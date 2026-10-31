@@ -1,6 +1,15 @@
-import { ToklynError } from 'toklyn';
 import type { CustomClaims, Session, SessionMetadata } from 'toklyn';
-import type { PostgresRow } from '#src/client.js';
+import type { PostgresRow } from '#src/postgres/client.js';
+import { replyParsers } from '#src/shared/reply.js';
+
+const parsers = replyParsers('Postgres');
+
+export const { malformed } = parsers;
+
+/** Parses integers selected as text: epoch ms and counts. */
+export const { parseInteger } = parsers;
+
+const { parseJsonObject } = parsers;
 
 /** Epoch ms parameter (`$n`, sent as text) to `timestamptz`, without float rounding. */
 export const toTimestamp = (param: string) =>
@@ -31,35 +40,8 @@ export function parseSession(row: PostgresRow): Session {
   };
 }
 
-/** Parses integers selected as text: epoch ms and counts. */
-export function parseInteger(value: unknown): number {
-  const parsed =
-    typeof value === 'string' && value !== '' ? Number(value) : NaN;
-  if (!Number.isSafeInteger(parsed)) throw malformed();
-  return parsed;
-}
-
 export function text(row: PostgresRow, column: string): string {
   const value = row[column];
   if (typeof value !== 'string') throw malformed();
   return value;
-}
-
-function parseJsonObject(value: string): Record<string, unknown> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch (cause) {
-    throw malformed(cause);
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw malformed();
-  }
-  return parsed as Record<string, unknown>;
-}
-
-export function malformed(cause?: unknown): ToklynError {
-  return new ToklynError('storage_error', 'Unexpected reply from Postgres', {
-    cause,
-  });
 }

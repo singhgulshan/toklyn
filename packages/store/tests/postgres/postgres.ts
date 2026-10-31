@@ -4,8 +4,12 @@ import pg from 'pg';
 import postgres from 'postgres';
 import type { AccessTokenRevocationStore } from 'toklyn';
 import { afterAll } from 'vitest';
-import { fromResultQuery, fromUnsafeQuery, migrate } from '#src/index.js';
-import type { PostgresClient } from '#src/index.js';
+import {
+  fromResultQuery,
+  fromUnsafeQuery,
+  migrate,
+} from '#src/postgres/index.js';
+import type { PostgresClient } from '#src/postgres/index.js';
 
 /** Set to run the suites against a real server, e.g. postgres://postgres:postgres@localhost:5432/postgres. */
 export const POSTGRES_URL = process.env.POSTGRES_URL;

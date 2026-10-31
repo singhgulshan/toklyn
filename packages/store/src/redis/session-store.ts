@@ -6,21 +6,21 @@ import type {
   Session,
   SessionStore,
 } from 'toklyn';
-import type { RedisClient } from '#src/client.js';
+import type { RedisClient } from '#src/redis/client.js';
 import {
   malformed,
   parseSession,
   parseSessionList,
   parseTimestamp,
   serializeTimestamp,
-} from '#src/codec.js';
+} from '#src/redis/codec.js';
 import {
   ACTIVE_FOR_SUBJECT,
   CREATE_SESSION,
   FIND_SESSION,
   REVOKE_SESSION,
   ROTATE,
-} from '#src/scripts.js';
+} from '#src/redis/scripts.js';
 
 /** The braces are a Redis Cluster hash tag: every key lands in one slot, as the scripts require. */
 export const DEFAULT_KEY_PREFIX = '{toklyn}:';

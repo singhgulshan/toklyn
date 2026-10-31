@@ -1,12 +1,12 @@
 import { systemClock } from 'toklyn';
 import type { AccessTokenRevocationStore, Clock } from 'toklyn';
-import type { RedisClient } from '#src/client.js';
-import { parseTimestamp } from '#src/codec.js';
+import type { RedisClient } from '#src/redis/client.js';
+import { parseTimestamp } from '#src/redis/codec.js';
 import {
   GET_ACCESS_TOKEN_REVOCATION,
   REVOKE_ACCESS_TOKEN,
-} from '#src/scripts.js';
-import { DEFAULT_KEY_PREFIX } from '#src/session-store.js';
+} from '#src/redis/scripts.js';
+import { DEFAULT_KEY_PREFIX } from '#src/redis/session-store.js';
 
 export interface RedisAccessTokenRevocationStoreOptions {
   client: RedisClient;

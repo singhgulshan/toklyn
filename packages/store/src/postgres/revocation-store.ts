@@ -1,9 +1,9 @@
 import { systemClock } from 'toklyn';
 import type { AccessTokenRevocationStore, Clock } from 'toklyn';
-import type { PostgresClient } from '#src/client.js';
-import { malformed, parseInteger, toTimestamp } from '#src/codec.js';
-import { resolveNames } from '#src/schema.js';
-import type { PostgresSchemaOptions } from '#src/schema.js';
+import type { PostgresClient } from '#src/postgres/client.js';
+import { malformed, parseInteger, toTimestamp } from '#src/postgres/codec.js';
+import { resolveNames } from '#src/postgres/schema.js';
+import type { PostgresSchemaOptions } from '#src/postgres/schema.js';
 
 export interface PostgresAccessTokenRevocationStoreOptions extends PostgresSchemaOptions {
   client: PostgresClient;

@@ -8,8 +8,7 @@
       "@toklyn/express",
       "@toklyn/nest",
       "@toklyn/next",
-      "@toklyn/redis",
-      "@toklyn/postgres"
+      "@toklyn/store"
     ]
   ],
   "linked": [],

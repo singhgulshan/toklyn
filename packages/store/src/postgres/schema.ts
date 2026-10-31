@@ -1,5 +1,5 @@
 import { ToklynError } from 'toklyn';
-import type { PostgresClient } from '#src/client.js';
+import type { PostgresClient } from '#src/postgres/client.js';
 
 export interface PostgresSchemaOptions {
   /** Postgres schema for the tables. Default: the connection's `search_path`, usually `public`. */
