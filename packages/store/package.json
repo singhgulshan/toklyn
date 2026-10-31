@@ -2,12 +2,14 @@
   "name": "@toklyn/store",
   "version": "0.2.0",
   "license": "MIT",
-  "description": "PostgreSQL and Redis session and access-token revocation stores for toklyn.",
+  "description": "PostgreSQL, MySQL/MariaDB and Redis session and access-token revocation stores for toklyn.",
   "keywords": [
     "toklyn",
     "session-store",
     "postgres",
     "postgresql",
+    "mysql",
+    "mariadb",
     "redis",
     "valkey",
     "upstash",
@@ -33,6 +35,16 @@
       "require": {
         "types": "./dist/postgres/index.d.cts",
         "default": "./dist/postgres/index.cjs"
+      }
+    },
+    "./mysql": {
+      "import": {
+        "types": "./dist/mysql/index.d.ts",
+        "default": "./dist/mysql/index.js"
+      },
+      "require": {
+        "types": "./dist/mysql/index.d.cts",
+        "default": "./dist/mysql/index.cjs"
       }
     },
     "./redis": {
@@ -75,6 +87,8 @@
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
     "ioredis": "^6.0.0",
+    "mariadb": "^3.5.4",
+    "mysql2": "^3.24.6",
     "pg": "^8.23.1",
     "postgres": "^4.0.0",
     "redis": "^6.3.1",

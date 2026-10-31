@@ -1,6 +1,6 @@
 # @toklyn/store
 
-**PostgreSQL and Redis session and access-token revocation stores for [toklyn](https://github.com/singhgulshan/toklyn).**
+**PostgreSQL, MySQL/MariaDB and Redis session and access-token revocation stores for [toklyn](https://github.com/singhgulshan/toklyn).**
 
 [![npm](https://img.shields.io/npm/v/@toklyn/store?color=cb3837&logo=npm)](https://www.npmjs.com/package/@toklyn/store)
 [![CI](https://github.com/singhgulshan/toklyn/actions/workflows/ci.yml/badge.svg)](https://github.com/singhgulshan/toklyn/actions/workflows/ci.yml)
@@ -8,10 +8,11 @@
 
 One package, one import path per database. Each store is written natively for its database, so refresh-token rotation is atomic across all your server instances, and an app only loads the database it imports.
 
-| Import                   | Database                                       | Atomic rotation   |
-| ------------------------ | ---------------------------------------------- | ----------------- |
-| `@toklyn/store/postgres` | PostgreSQL (tested on 17 and 18), PGlite, Neon | One SQL statement |
-| `@toklyn/store/redis`    | Redis 6.2+, Valkey, Upstash, Redis Cluster     | One Lua script    |
+| Import                   | Database                                       | Atomic rotation                |
+| ------------------------ | ---------------------------------------------- | ------------------------------ |
+| `@toklyn/store/postgres` | PostgreSQL (tested on 17 and 18), PGlite, Neon | One SQL statement              |
+| `@toklyn/store/mysql`    | MySQL 8.0+, MariaDB 10.6+ (InnoDB)             | One transaction with row locks |
+| `@toklyn/store/redis`    | Redis 6.2+, Valkey, Upstash, Redis Cluster     | One Lua script                 |
 
 No runtime dependencies: bring the database client your app already uses. Every store passes the same contract tests from `toklyn/testing`, plus a parallel-refresh race test against a real server.
 
@@ -89,6 +90,72 @@ Both stores, `migrate` and `createSchemaSql` accept `schema` and `tablePrefix`. 
 | `clock`       | system clock                              | Revocation store only; inject time in tests                                         |
 
 Names are validated and quoted, never taken from requests.
+
+## MySQL and MariaDB
+
+Clients: [`mysql2`](https://sidorares.github.io/node-mysql2/docs) (`mysql2/promise`) or [`mariadb`](https://github.com/mariadb-corporation/mariadb-connector-nodejs). Tested on MySQL 8.4 and MariaDB 11.
+
+```ts
+import {
+  MySqlAccessTokenRevocationStore,
+  MySqlSessionStore,
+  fromTupleQuery,
+  migrate,
+} from '@toklyn/store/mysql';
+import mysql from 'mysql2/promise';
+import { createAuth } from 'toklyn';
+
+const client = fromTupleQuery(mysql.createPool(process.env.DATABASE_URL!));
+await migrate(client); // or put createSchemaSql() in your migrations
+
+const auth = createAuth({
+  // ...signer, verifier and lifetimes
+  sessions: new MySqlSessionStore({ client }),
+  revocations: new MySqlAccessTokenRevocationStore({ client }), // optional
+});
+```
+
+MySQL cannot update and return rows in one statement, so rotation runs in a short transaction: `SELECT ... FOR UPDATE` locks the presented token and its session, then the token is consumed and its successor inserted. A concurrent refresh of the same token waits for the lock and then sees it consumed. Deadlocks and lock wait timeouts are retried up to three times.
+
+Pick the adapter that matches your client:
+
+| Client                                               | Adapter                 |
+| ---------------------------------------------------- | ----------------------- |
+| mysql2/promise: `query` resolves to `[rows, fields]` | `fromTupleQuery(pool)`  |
+| mariadb: `query` resolves to the rows                | `fromDirectQuery(pool)` |
+
+Pass a pool, not a single connection: each transaction takes its own connection. Any other client or ORM works if you implement `MySqlClient`: `query(sql, params)` returning `{ rows, affectedRows }`, and `transaction(fn)` that runs `fn` on one connection and rolls back if it throws.
+
+The connection character set must be `utf8mb4` (the default for both clients).
+
+### Prepared statements
+
+`fromTupleQuery(pool, { prepare: true })` and `fromDirectQuery(pool, { prepare: true })` send statements through `execute`, which prepares each one once per connection. Leave it off behind a proxy that does not support prepared statements.
+
+### Tables
+
+`migrate(client, options?)` creates the tables if they are missing; the database itself must already exist. `createSchemaSql(options?)` returns the same DDL for your own migration tool. Both are safe to run more than once.
+
+| Table                             | Contents                                                                          |
+| --------------------------------- | --------------------------------------------------------------------------------- |
+| `toklyn_sessions`                 | One row per session; claims and metadata as JSON text, times as `BIGINT` epoch ms |
+| `toklyn_refresh_tokens`           | SHA-256 hashes only; deleted with their session                                   |
+| `toklyn_access_token_revocations` | Denylisted access-token ids until they expire                                     |
+
+Ids, subjects, hashes and token ids are `VARBINARY(255)`, so they compare byte for byte: no case folding and no trailing-space padding. Longer values are rejected with `invalid_input` instead of being truncated.
+
+Expired rows are not removed automatically. Call `sessions.purgeExpired(Date.now())` and `revocations.purgeExpired()` from a scheduled job.
+
+### Options
+
+| Option        | Default                   | Description                                                               |
+| ------------- | ------------------------- | ------------------------------------------------------------------------- |
+| `client`      | required (stores)         | A `MySqlClient` from one of the adapters                                  |
+| `database`    | the connection's database | Database holding the tables                                               |
+| `tablePrefix` | `'toklyn_'`               | Prefix for table names; up to 24 lowercase letters, digits or underscores |
+| `clock`       | system clock              | Revocation store only; inject time in tests                               |
+
+The revocation store and `migrate` only need `query`, so any `MySqlExecutor` works there.
 
 ## Redis
 
