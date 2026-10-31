@@ -86,6 +86,7 @@ await auth.revokeSession(claims.sid);
 - [`@toklyn/nest`](https://www.npmjs.com/package/@toklyn/nest): NestJS module, guard and decorators
 - [`@toklyn/next`](https://www.npmjs.com/package/@toklyn/next): Next.js App Router helpers
 - [`@toklyn/redis`](https://www.npmjs.com/package/@toklyn/redis): Redis, Valkey and Upstash stores
+- [`@toklyn/postgres`](https://www.npmjs.com/package/@toklyn/postgres): PostgreSQL stores
 
 ## License
 

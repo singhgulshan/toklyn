@@ -50,6 +50,7 @@ toklyn issues short-lived JWT access tokens and long-lived opaque refresh tokens
 | [`@toklyn/nest`](packages/nest)       | NestJS module, guard and decorators                                     | [![npm](https://img.shields.io/npm/v/@toklyn/nest?label=)](https://www.npmjs.com/package/@toklyn/nest)       |
 | [`@toklyn/next`](packages/next)       | Next.js App Router route handlers, proxy and server-component helpers   | [![npm](https://img.shields.io/npm/v/@toklyn/next?label=)](https://www.npmjs.com/package/@toklyn/next)       |
 | [`@toklyn/redis`](packages/redis)     | Redis, Valkey and Upstash session and revocation stores                 | [![npm](https://img.shields.io/npm/v/@toklyn/redis?label=)](https://www.npmjs.com/package/@toklyn/redis)     |
+| [`@toklyn/postgres`](packages/postgres) | PostgreSQL session and revocation stores                              | [![npm](https://img.shields.io/npm/v/@toklyn/postgres?label=)](https://www.npmjs.com/package/@toklyn/postgres) |
 
 All packages share one version number and are released together.
 
@@ -427,6 +428,7 @@ More in the [`@toklyn/next` README](packages/next), [`examples/next`](examples/n
 | -------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------- |
 | `MemorySessionStore`, `MemoryAccessTokenRevocationStore` | `toklyn`                                                   | Development and tests. State is per process and lost on restart     |
 | `RedisSessionStore`, `RedisAccessTokenRevocationStore`   | [`@toklyn/redis`](packages/redis)                          | Production: Redis 6.2+, built for Valkey, Upstash and Redis Cluster |
+| `PostgresSessionStore`, `PostgresAccessTokenRevocationStore` | [`@toklyn/postgres`](packages/postgres) | Production: PostgreSQL with any driver; one statement per operation, no transactions |
 | Your own                                                 | implement [`SessionStore`](packages/core/src/contracts.ts) | Any database with atomic updates                                    |
 
 A custom `SessionStore` must make `rotate` atomic and set `session.lastRefreshedAt` on every successful rotation. Check your implementation with the contract suites from `toklyn/testing` (requires [Vitest](https://vitest.dev)):
@@ -434,13 +436,10 @@ A custom `SessionStore` must make `rotate` atomic and set `session.lastRefreshed
 ```ts
 import { revocationStoreContract, sessionStoreContract } from 'toklyn/testing';
 
-sessionStoreContract(
-  'PostgresSessionStore',
-  () => new PostgresSessionStore(pool),
-);
+sessionStoreContract('MySqlSessionStore', () => new MySqlSessionStore(pool));
 revocationStoreContract(
-  'PostgresRevocations',
-  (clock) => new PostgresRevocations(pool, clock),
+  'MySqlRevocations',
+  (clock) => new MySqlRevocations(pool, clock),
 );
 ```
 
