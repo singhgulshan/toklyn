@@ -12,6 +12,10 @@
       ],
       "toklyn/http": [
         "../core/src/http/index.ts"
+      ],
+      // Next has no exports map, so nodenext needs help with its extensionless subpaths.
+      "next/*": [
+        "./node_modules/next/*.d.ts"
       ]
     }
   },

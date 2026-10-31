@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  createRefreshCookie,
+  createCookie,
   extractBearerToken,
   isTrustedOrigin,
   readCookie,
@@ -78,13 +78,15 @@ describe('readCookie', () => {
   });
 });
 
-describe('createRefreshCookie', () => {
+describe('createCookie', () => {
   const NOW = 1_700_000_000_000;
+  const REFRESH = { name: 'toklyn_refresh', sameSite: 'Strict' } as const;
 
   it('uses secure defaults and the __Host- prefix', () => {
-    const cookie = createRefreshCookie();
+    const cookie = createCookie(REFRESH);
 
     expect(cookie.name).toBe('__Host-toklyn_refresh');
+    expect(cookie.sameSite).toBe('Strict');
     expect(cookie.serialize('tok', NOW + 60_000, NOW)).toBe(
       '__Host-toklyn_refresh=tok; Max-Age=60; Path=/; HttpOnly; Secure; SameSite=Strict',
     );
@@ -94,10 +96,10 @@ describe('createRefreshCookie', () => {
   });
 
   it('falls back to __Secure- when scoped by path or domain', () => {
-    expect(createRefreshCookie({ path: '/auth' }).name).toBe(
+    expect(createCookie(REFRESH, { path: '/auth' }).name).toBe(
       '__Secure-toklyn_refresh',
     );
-    const cookie = createRefreshCookie({
+    const cookie = createCookie(REFRESH, {
       name: 'rt',
       domain: 'example.com',
       sameSite: 'Lax',
@@ -109,21 +111,29 @@ describe('createRefreshCookie', () => {
   });
 
   it('drops the prefix and Secure only when secure is false', () => {
-    const cookie = createRefreshCookie({ secure: false });
+    const cookie = createCookie(REFRESH, { secure: false });
     expect(cookie.name).toBe('toklyn_refresh');
     expect(cookie.serializeClear()).toBe(
       'toklyn_refresh=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict',
     );
   });
 
+  it('allows SameSite=None on secure cookies', () => {
+    const cookie = createCookie(REFRESH, { sameSite: 'None' });
+    expect(cookie.sameSite).toBe('None');
+    expect(cookie.serializeClear()).toBe(
+      '__Host-toklyn_refresh=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=None',
+    );
+  });
+
   it('rounds Max-Age down and never goes negative', () => {
-    const cookie = createRefreshCookie();
+    const cookie = createCookie(REFRESH);
     expect(cookie.serialize('t', NOW + 1999, NOW)).toContain('Max-Age=1;');
     expect(cookie.serialize('t', NOW - 5000, NOW)).toContain('Max-Age=0;');
   });
 
   it('refuses values that would break the header', () => {
-    const cookie = createRefreshCookie();
+    const cookie = createCookie(REFRESH);
     for (const token of ['', 'a;b', 'a b', 'a,b', 'a"b', 'a\\b', 'a\r\nb']) {
       expect(configCode(() => cookie.serialize(token, NOW, NOW))).toBe(
         'invalid_input',
@@ -145,10 +155,11 @@ describe('createRefreshCookie', () => {
     { domain: '.example.com' },
     { domain: 'example.com; Path=/' },
     { domain: 'exa mple.com' },
-    { sameSite: 'None' as 'Lax' },
+    { sameSite: 'strict' as 'Lax' },
+    { sameSite: 'None' as const, secure: false },
     { secure: 'yes' as unknown as boolean },
   ])('rejects invalid options %j', (options) => {
-    expect(configCode(() => createRefreshCookie(options))).toBe(
+    expect(configCode(() => createCookie(REFRESH, options))).toBe(
       'invalid_config',
     );
   });

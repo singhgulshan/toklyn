@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Next bundles with tsconfig.json paths, so source paths live only here: no build needed to type-check.
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "toklyn": [
+        "../../packages/core/src/index.ts"
+      ],
+      "toklyn/http": [
+        "../../packages/core/src/http/index.ts"
+      ],
+      "@toklyn/next/server": [
+        "../../packages/next/src/server.ts"
+      ]
+    }
+  }
+}

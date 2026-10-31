@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import type { TokenPair } from 'toklyn';
 import type { ToklynHttp, ToklynHttpResponse } from 'toklyn/http';
-import { TOKLYN_HTTP, toHttpRequest } from './internal.js';
+import { TOKLYN_HTTP, toHttpRequest, writeHeaders } from './internal.js';
 import type { NodeStyleRequest } from './internal.js';
 
 /**
@@ -34,9 +34,7 @@ export class ToklynSessionService {
 
   private send(res: object, response: ToklynHttpResponse): void {
     const adapter = this.adapterHost.httpAdapter;
-    for (const [name, value] of response.headers) {
-      adapter.setHeader(res, name, value);
-    }
+    writeHeaders(adapter, res, response.headers);
     adapter.reply(res, response.body ?? undefined, response.status);
   }
 }

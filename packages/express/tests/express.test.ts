@@ -7,6 +7,7 @@ import {
   MemorySessionStore,
   createAuth,
 } from 'toklyn';
+import type { ToklynHttpOptions } from 'toklyn/http';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createToklynExpress, getAuth } from '#src/index.js';
 
@@ -21,7 +22,7 @@ afterEach(() => {
   for (const server of servers.splice(0)) server.close();
 });
 
-async function startApp() {
+async function startApp(options: ToklynHttpOptions = {}) {
   const sessions = new MemorySessionStore();
   const auth = createAuth<{ role: string }>({
     signer: new JwtAccessTokenSigner(keyConfig),
@@ -30,8 +31,12 @@ async function startApp() {
     accessTokenTtlSeconds: 900,
     refreshTokenTtlSeconds: 3600,
     sessionMaxAgeSeconds: 86_400,
+    reuseGraceMs: options.accessToken === 'cookie' ? 10_000 : 0,
   });
-  const toklyn = createToklynExpress(auth, { allowedOrigins: [ORIGIN] });
+  const toklyn = createToklynExpress(auth, {
+    allowedOrigins: [ORIGIN],
+    ...options,
+  });
 
   const app = express();
   app.post('/login', async (_req, res) => {
@@ -46,6 +51,9 @@ async function startApp() {
   app.get('/me', toklyn.requireAuth, (req, res) => {
     const { sub, role } = getAuth<{ role: string }>(req);
     res.json({ sub, role });
+  });
+  app.post('/notes', toklyn.requireAuth, (req, res) => {
+    res.status(201).json({ by: getAuth(req).sub });
   });
   app.get('/unguarded', (req, res) => {
     res.json(getAuth(req));
@@ -90,6 +98,30 @@ function fromBrowser(refreshToken: string, origin = ORIGIN): RequestInit {
 }
 
 describe('@toklyn/express', () => {
+  it('supports cookie mode with an origin check on writes', async () => {
+    const { call } = await startApp({ accessToken: 'cookie' });
+
+    const response = await call('/login', { method: 'POST' });
+    const cookie = response.headers
+      .getSetCookie()
+      .map((value) => value.split(';')[0])
+      .join('; ');
+
+    expect(response.headers.getSetCookie()).toHaveLength(2);
+    expect(await response.json()).not.toHaveProperty('accessToken');
+    expect((await call('/me', { headers: { cookie } })).status).toBe(200);
+    const crossSite = await call('/notes', {
+      method: 'POST',
+      headers: { cookie, origin: 'https://evil.example' },
+    });
+    expect(crossSite.status).toBe(403);
+    const sameSite = await call('/notes', {
+      method: 'POST',
+      headers: { cookie, origin: ORIGIN },
+    });
+    expect(sameSite.status).toBe(201);
+    expect(await sameSite.json()).toEqual({ by: 'u1' });
+  });
   it('logs in with an HttpOnly cookie and a JSON access token', async () => {
     const { call } = await startApp();
 

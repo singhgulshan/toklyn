@@ -7,11 +7,12 @@ import {
   TOKLYN_PUBLIC,
   claimsByRequest,
   toHttpRequest,
+  writeHeaders,
 } from './internal.js';
 import type { NodeStyleRequest } from './internal.js';
 
 /**
- * Requires a valid Bearer token. Use per route with `@UseGuards`, or app-wide as `APP_GUARD`
+ * Requires a valid access token. Use per route with `@UseGuards`, or app-wide as `APP_GUARD`
  * and opt routes out with `@ToklynPublic()`. Non-HTTP contexts are denied.
  */
 @Injectable()
@@ -40,9 +41,7 @@ export class ToklynAuthGuard implements CanActivate {
 
     const { response } = result;
     const res = http.getResponse<object>();
-    for (const [name, value] of response.headers) {
-      this.adapterHost.httpAdapter.setHeader(res, name, value);
-    }
+    writeHeaders(this.adapterHost.httpAdapter, res, response.headers);
     throw new HttpException(response.body ?? {}, response.status);
   }
 }

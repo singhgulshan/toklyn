@@ -57,6 +57,8 @@ export interface RefreshInput<TClaims extends ClaimsShape = CustomClaims> {
 }
 
 export interface Auth<TClaims extends ClaimsShape = CustomClaims> {
+  /** The configured `reuseGraceMs`. */
+  readonly reuseGraceMs: number;
   createSession(input: CreateSessionInput<TClaims>): Promise<TokenPair>;
   refresh(input: RefreshInput<TClaims>): Promise<TokenPair>;
   verifyAccessToken(accessToken: string): Promise<AccessTokenClaims<TClaims>>;

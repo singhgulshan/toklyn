@@ -41,7 +41,7 @@ const keyConfig = {
   keys: [{ algorithm: 'HS256' as const, secret: new Uint8Array(32).fill(3) }],
 };
 
-function makeAuth(): Auth<Claims> {
+function makeAuth(reuseGraceMs = 0): Auth<Claims> {
   return createAuth<Claims>({
     signer: new JwtAccessTokenSigner(keyConfig),
     verifier: new JwtAccessTokenVerifier(keyConfig),
@@ -49,6 +49,7 @@ function makeAuth(): Auth<Claims> {
     accessTokenTtlSeconds: 900,
     refreshTokenTtlSeconds: 3600,
     sessionMaxAgeSeconds: 86_400,
+    reuseGraceMs,
   });
 }
 
@@ -147,6 +148,48 @@ const sharedAuth = makeAuth();
 })
 class RouteGuardModule {}
 
+@Controller()
+class CookieController {
+  constructor(
+    @Inject(ToklynSessionService)
+    private readonly sessions: ToklynSessionService,
+  ) {}
+
+  @ToklynPublic()
+  @Post('login')
+  async login(@Res() res: object): Promise<void> {
+    this.sessions.sendSession(
+      res,
+      await cookieAuth.createSession({ subject: 'u1' }),
+    );
+  }
+
+  @Get('me')
+  me(@ToklynClaims() claims: AccessTokenClaims) {
+    return { sub: claims.sub };
+  }
+
+  @Post('notes')
+  note(@ToklynClaims() claims: AccessTokenClaims) {
+    return { by: claims.sub };
+  }
+}
+
+const cookieAuth = makeAuth(10_000);
+
+@Module({
+  imports: [
+    ToklynModule.forRoot({
+      auth: cookieAuth,
+      accessToken: 'cookie',
+      allowedOrigins: [ORIGIN],
+    }),
+  ],
+  controllers: [CookieController],
+  providers: [{ provide: APP_GUARD, useClass: ToklynAuthGuard }],
+})
+class CookieModeModule {}
+
 const apps: INestApplication[] = [];
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
@@ -181,6 +224,31 @@ describe.each(Object.entries(platforms))('@toklyn/nest on %s', (_, adapter) => {
       refreshToken: cookieValue(response),
     };
   }
+
+  it('supports cookie mode with an origin check on writes', async () => {
+    const { call } = await start(CookieModeModule);
+
+    const response = await call('/login', { method: 'POST' });
+    const cookie = response.headers
+      .getSetCookie()
+      .map((value) => value.split(';')[0])
+      .join('; ');
+
+    expect(response.headers.getSetCookie()).toHaveLength(2);
+    expect(await response.json()).not.toHaveProperty('accessToken');
+    expect((await call('/me', { headers: { cookie } })).status).toBe(200);
+    const crossSite = await call('/notes', {
+      method: 'POST',
+      headers: { cookie, origin: 'https://evil.example' },
+    });
+    expect(crossSite.status).toBe(403);
+    const sameSite = await call('/notes', {
+      method: 'POST',
+      headers: { cookie, origin: ORIGIN },
+    });
+    expect(sameSite.status).toBe(201);
+    expect(await sameSite.json()).toEqual({ by: 'u1' });
+  });
 
   it('logs in with an HttpOnly cookie and a JSON access token', async () => {
     const { call } = await start(GlobalGuardModule);

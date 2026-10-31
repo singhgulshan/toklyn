@@ -257,6 +257,34 @@ importers:
         specifier: ^19.3.0
         version: 19.3.0(@types/react@19.3.0)
 
+  examples/next-ssr:
+    dependencies:
+      '@toklyn/next':
+        specifier: workspace:*
+        version: link:../../packages/next
+      next:
+        specifier: ^16.4.3
+        version: 16.4.3(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.3.1
+        version: 19.3.1(react@19.3.1)
+      toklyn:
+        specifier: workspace:*
+        version: link:../../packages/core
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+
   packages/core:
     dependencies:
       jose:
@@ -350,6 +378,15 @@ importers:
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
+      next:
+        specifier: ^16.4.3
+        version: 16.4.3(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.3.1
+        version: 19.3.1(react@19.3.1)
       toklyn:
         specifier: workspace:^
         version: link:../core

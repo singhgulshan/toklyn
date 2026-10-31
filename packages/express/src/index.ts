@@ -16,7 +16,7 @@ import type {
 export type ToklynExpressOptions = ToklynHttpOptions;
 
 export interface ToklynExpress {
-  /** Rejects the request with 401 unless it carries a valid Bearer token. */
+  /** Rejects the request with 401 unless it carries a valid access token. */
   requireAuth: RequestHandler;
   /** Mount on POST. Rotates the refresh cookie and returns a new access token. */
   refreshHandler: RequestHandler;
@@ -66,7 +66,7 @@ export function getAuth<TClaims extends ClaimsShape = CustomClaims>(
 }
 
 function toHttpRequest(req: Request): ToklynHttpRequest {
-  return { header: (name) => req.get(name) };
+  return { method: req.method, header: (name) => req.get(name) };
 }
 
 function send(res: Response, response: ToklynHttpResponse): void {

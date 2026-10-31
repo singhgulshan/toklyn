@@ -53,8 +53,11 @@ function setup(overrides: Partial<AuthConfig> = {}) {
   return { auth, http, clock, store };
 }
 
-function request(headers: Record<string, string> = {}): ToklynHttpRequest {
-  return { header: (name) => headers[name] };
+function request(
+  headers: Record<string, string> = {},
+  method = 'POST',
+): ToklynHttpRequest {
+  return { method, header: (name) => headers[name] };
 }
 
 function browser(refreshToken?: string): ToklynHttpRequest {
@@ -328,6 +331,345 @@ describe('createToklynHttp', () => {
 
       expect(response.status).toBe(503);
       expect(header(response, 'Set-Cookie')).toEqual([CLEARED]);
+    });
+  });
+});
+
+describe('createToklynHttp in cookie mode', () => {
+  const ACCESS = '__Host-toklyn_access';
+  const CLEARED_LAX = [
+    `${COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`,
+    `${ACCESS}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`,
+  ];
+
+  function cookieSetup(overrides: Partial<AuthConfig> = {}) {
+    const ctx = setup({ reuseGraceMs: 10_000, ...overrides });
+    const http = createToklynHttp(ctx.auth, {
+      accessToken: 'cookie',
+      allowedOrigins: [ORIGIN],
+      clock: ctx.clock,
+    });
+    return { ...ctx, http };
+  }
+
+  function cookies(
+    tokens: { accessToken?: string; refreshToken?: string },
+    extra = 'theme=dark',
+  ): string {
+    return [
+      extra,
+      ...(tokens.refreshToken ? [`${COOKIE}=${tokens.refreshToken}`] : []),
+      ...(tokens.accessToken ? [`${ACCESS}=${tokens.accessToken}`] : []),
+    ].join('; ');
+  }
+
+  function page(cookie: string, method = 'GET'): ToklynHttpRequest {
+    return request({ cookie }, method);
+  }
+
+  function configCode(run: () => unknown) {
+    try {
+      run();
+    } catch (error) {
+      return (error as { code?: string }).code;
+    }
+    return undefined;
+  }
+
+  describe('options', () => {
+    it('requires a reuse grace period', () => {
+      const { auth } = setup();
+      expect(
+        configCode(() => createToklynHttp(auth, { accessToken: 'cookie' })),
+      ).toBe('invalid_config');
+    });
+
+    it.each([
+      { accessToken: 'jwt' as 'cookie' },
+      { accessCookie: { name: 'at' } },
+      {
+        accessToken: 'cookie' as const,
+        cookie: { name: 'x' },
+        accessCookie: { name: 'x' },
+      },
+      { accessToken: 'cookie' as const, accessCookie: { path: 'x' } },
+      {
+        accessToken: 'cookie' as const,
+        accessCookie: { sameSite: 'None' as const },
+      },
+      { cookie: { sameSite: 'None' as const } },
+      {
+        cookie: { sameSite: 'None' as const, secure: false },
+        allowedOrigins: [ORIGIN],
+      },
+    ])('rejects %j', (options) => {
+      const { auth } = setup({ reuseGraceMs: 10_000 });
+      expect(configCode(() => createToklynHttp(auth, options))).toBe(
+        'invalid_config',
+      );
+    });
+
+    it('allows SameSite=None with an allow-list', () => {
+      const { auth } = setup({ reuseGraceMs: 10_000 });
+      const http = createToklynHttp(auth, {
+        accessToken: 'cookie',
+        accessCookie: { sameSite: 'None' },
+        cookie: { sameSite: 'None' },
+        allowedOrigins: [ORIGIN],
+      });
+      expect(http.accessCookieName).toBe(ACCESS);
+    });
+
+    it('keeps resolve and readClaims to cookie mode', async () => {
+      const { http } = setup();
+      expect(http.accessCookieName).toBeNull();
+      await expect(http.resolve(page(''))).rejects.toMatchObject({
+        code: 'invalid_config',
+      });
+      await expect(http.readClaims('')).rejects.toMatchObject({
+        code: 'invalid_config',
+      });
+    });
+  });
+
+  it('issues both cookies and keeps the access token out of the body', async () => {
+    const { auth, http } = cookieSetup();
+    const tokens = await auth.createSession({ subject: 'u1' });
+
+    const response = http.issue(tokens);
+
+    expect(header(response, 'Set-Cookie')).toEqual([
+      `${COOKIE}=${tokens.refreshToken}; Max-Age=3600; Path=/; HttpOnly; Secure; SameSite=Lax`,
+      `${ACCESS}=${tokens.accessToken}; Max-Age=900; Path=/; HttpOnly; Secure; SameSite=Lax`,
+    ]);
+    expect(response.body).toEqual({
+      accessTokenExpiresAt: tokens.accessTokenExpiresAt,
+      refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
+      sessionId: tokens.sessionId,
+    });
+  });
+
+  describe('authenticate', () => {
+    it('reads the access cookie and ignores Bearer headers', async () => {
+      const { auth, http } = cookieSetup();
+      const tokens = await auth.createSession({ subject: 'u1' });
+
+      const ok = await http.authenticate(page(cookies(tokens)));
+      const bearer = await http.authenticate(
+        request({ authorization: `Bearer ${tokens.accessToken}` }, 'GET'),
+      );
+
+      expect(ok.ok && ok.claims.sub).toBe('u1');
+      expect(bearer).toEqual({
+        ok: false,
+        response: {
+          status: 401,
+          headers: [['Cache-Control', 'no-store']],
+          body: UNAUTHORIZED,
+        },
+      });
+    });
+
+    it('needs a trusted origin for writes', async () => {
+      const { auth, http } = cookieSetup();
+      const tokens = await auth.createSession({ subject: 'u1' });
+      const cookie = cookies(tokens);
+
+      for (const method of ['POST', 'put', 'PATCH', 'DELETE']) {
+        for (const headers of [
+          { cookie },
+          { cookie, origin: 'https://evil.example' },
+          { cookie, 'sec-fetch-site': 'same-site' },
+        ] as Record<string, string>[]) {
+          const result = await http.authenticate(request(headers, method));
+          expect(!result.ok && result.response.status).toBe(403);
+        }
+        const trusted = await http.authenticate(
+          request({ cookie, origin: ORIGIN }, method),
+        );
+        expect(trusted.ok).toBe(true);
+      }
+      for (const method of ['GET', 'head', 'OPTIONS']) {
+        expect((await http.authenticate(page(cookie, method))).ok).toBe(true);
+      }
+    });
+  });
+
+  it('rotates and clears both cookies on refresh and logout', async () => {
+    const { auth, http } = cookieSetup();
+    const tokens = await auth.createSession({ subject: 'u1' });
+
+    const refreshed = await http.refresh(
+      request({ origin: ORIGIN, cookie: cookies(tokens) }),
+    );
+    const failed = await http.refresh(request({ origin: ORIGIN }));
+    const loggedOut = await http.logout(
+      request({ origin: ORIGIN, cookie: cookies(tokens) }),
+    );
+
+    expect(header(refreshed, 'Set-Cookie')).toHaveLength(2);
+    expect(refreshed.body).not.toHaveProperty('accessToken');
+    expect(header(failed, 'Set-Cookie')).toEqual(CLEARED_LAX);
+    expect(header(loggedOut, 'Set-Cookie')).toEqual(CLEARED_LAX);
+  });
+
+  describe('resolve', () => {
+    it('passes a valid access cookie through untouched', async () => {
+      const { auth, http } = cookieSetup();
+      const tokens = await auth.createSession({ subject: 'u1' });
+      const cookie = cookies(tokens);
+
+      const result = await http.resolve(page(cookie));
+
+      expect(result).toMatchObject({
+        status: 'authenticated',
+        claims: { sub: 'u1' },
+        headers: [],
+        cookie,
+      });
+    });
+
+    it('refreshes an expired access cookie and forwards the new tokens', async () => {
+      const { auth, http, clock } = cookieSetup();
+      const tokens = await auth.createSession({ subject: 'u1' });
+      clock.time += 901_000;
+
+      const result = await http.resolve(page(cookies(tokens)));
+
+      expect(result.status).toBe('authenticated');
+      const [refreshCookie, accessCookie] = header(
+        { status: 200, headers: result.headers, body: null },
+        'Set-Cookie',
+      );
+      const newRefresh = /^[^=]+=([^;]*)/.exec(refreshCookie ?? '')?.[1];
+      const newAccess = /^[^=]+=([^;]*)/.exec(accessCookie ?? '')?.[1];
+      expect(newRefresh).not.toBe(tokens.refreshToken);
+      expect(result.cookie).toBe(
+        `theme=dark; ${COOKIE}=${newRefresh}; ${ACCESS}=${newAccess}`,
+      );
+      expect(result.headers).toContainEqual(['Cache-Control', 'no-store']);
+      expect(await http.readClaims(result.cookie)).toMatchObject({
+        sub: 'u1',
+      });
+    });
+
+    it('survives parallel refreshes within the grace period', async () => {
+      const { auth, http, clock } = cookieSetup();
+      const tokens = await auth.createSession({ subject: 'u1' });
+      clock.time += 901_000;
+      const cookie = cookies({ refreshToken: tokens.refreshToken });
+
+      const results = await Promise.all([
+        http.resolve(page(cookie)),
+        http.resolve(page(cookie)),
+        http.resolve(page(cookie)),
+      ]);
+
+      expect(results.map((r) => r.status)).toEqual([
+        'authenticated',
+        'authenticated',
+        'authenticated',
+      ]);
+      expect(await auth.listSessions('u1')).toHaveLength(1);
+    });
+
+    it('signs out and strips auth cookies when the refresh token is bad', async () => {
+      const { http } = cookieSetup();
+
+      const none = await http.resolve(page('theme=dark'));
+      const bad = await http.resolve(
+        page(cookies({ accessToken: 'x.y.z', refreshToken: 'stale' })),
+      );
+      const empty = await http.resolve(page(''));
+
+      expect(none).toEqual({
+        status: 'unauthenticated',
+        headers: [],
+        cookie: 'theme=dark',
+      });
+      expect(bad.status).toBe('unauthenticated');
+      expect(bad.cookie).toBe('theme=dark');
+      expect(
+        header({ status: 401, headers: bad.headers, body: null }, 'Set-Cookie'),
+      ).toEqual(CLEARED_LAX);
+      expect(empty.cookie).toBeNull();
+    });
+
+    it('treats cross-site writes as signed out without touching tokens', async () => {
+      const { auth, http, clock } = cookieSetup();
+      const tokens = await auth.createSession({ subject: 'u1' });
+      clock.time += 901_000;
+
+      const result = await http.resolve(
+        request(
+          { cookie: cookies(tokens), origin: 'https://evil.example' },
+          'POST',
+        ),
+      );
+
+      expect(result).toEqual({
+        status: 'unauthenticated',
+        headers: [],
+        cookie: 'theme=dark',
+      });
+      const later = await http.resolve(page(cookies(tokens)));
+      expect(later.status).toBe('authenticated');
+    });
+
+    it('reports storage errors and keeps the cookies', async () => {
+      const { auth, http, clock, store } = cookieSetup();
+      const tokens = await auth.createSession({ subject: 'u1' });
+      clock.time += 901_000;
+      store.failRotate = true;
+      const cookie = cookies(tokens);
+
+      const result = await http.resolve(page(cookie));
+
+      expect(result).toEqual({
+        status: 'unavailable',
+        headers: [['Cache-Control', 'no-store']],
+        cookie,
+      });
+    });
+
+    it('still sends rotated cookies when online verification fails afterwards', async () => {
+      const { auth, http, clock, store } = cookieSetup({
+        verification: 'online',
+      });
+      const tokens = await auth.createSession({ subject: 'u1' });
+      clock.time += 901_000;
+      store.failFind = true;
+
+      const result = await http.resolve(page(cookies(tokens)));
+
+      expect(result.status).toBe('unavailable');
+      expect(
+        result.headers.filter(([name]) => name === 'Set-Cookie'),
+      ).toHaveLength(2);
+    });
+  });
+
+  describe('readClaims', () => {
+    it('returns claims, or null when missing or expired', async () => {
+      const { auth, http, clock } = cookieSetup();
+      const tokens = await auth.createSession({ subject: 'u1' });
+
+      expect(await http.readClaims(cookies(tokens))).toMatchObject({
+        sub: 'u1',
+      });
+      expect(await http.readClaims(null)).toBeNull();
+      clock.time += 901_000;
+      expect(await http.readClaims(cookies(tokens))).toBeNull();
+    });
+
+    it('throws when online verification cannot reach storage', async () => {
+      const { auth, http, store } = cookieSetup({ verification: 'online' });
+      const tokens = await auth.createSession({ subject: 'u1' });
+      store.failFind = true;
+
+      await expect(http.readClaims(cookies(tokens))).rejects.toMatchObject({
+        code: 'storage_error',
+      });
     });
   });
 });

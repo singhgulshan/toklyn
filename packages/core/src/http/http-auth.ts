@@ -1,6 +1,7 @@
 import type { Auth } from '#src/auth.js';
 import { systemClock } from '#src/clock.js';
 import type { Clock } from '#src/contracts.js';
+import { ToklynError } from '#src/errors.js';
 import type {
   AccessTokenClaims,
   ClaimsShape,
@@ -8,21 +9,28 @@ import type {
   TokenPair,
 } from '#src/types.js';
 import { extractBearerToken } from './bearer.js';
-import { createRefreshCookie, readCookie } from './cookies.js';
-import type { RefreshCookieOptions } from './cookies.js';
+import { createCookie, readCookie } from './cookies.js';
+import type { CookieOptions, HttpCookie } from './cookies.js';
 import { toToklynHttpError } from './errors.js';
 import { isTrustedOrigin, toAllowedOrigins } from './origin.js';
 
 /** The only thing the flows need from a request. Header names are lower case. */
 export interface ToklynHttpRequest {
+  /** In cookie mode, methods other than GET, HEAD and OPTIONS need a trusted origin. */
+  method: string;
   header(name: string): string | null | undefined;
 }
 
-export interface SessionResponseBody {
-  accessToken: string;
+export type HttpHeaders = ReadonlyArray<readonly [name: string, value: string]>;
+
+export interface CookieSessionResponseBody {
   accessTokenExpiresAt: number;
   refreshTokenExpiresAt: number;
   sessionId: string;
+}
+
+export interface SessionResponseBody extends CookieSessionResponseBody {
+  accessToken: string;
 }
 
 export interface ErrorResponseBody {
@@ -32,73 +40,166 @@ export interface ErrorResponseBody {
 /** A framework-neutral response. Adapters copy it onto their own response object. */
 export interface ToklynHttpResponse {
   status: number;
-  headers: ReadonlyArray<readonly [name: string, value: string]>;
+  headers: HttpHeaders;
   /** Serialize as JSON. Null means no body. */
-  body: SessionResponseBody | ErrorResponseBody | null;
+  body:
+    SessionResponseBody | CookieSessionResponseBody | ErrorResponseBody | null;
 }
 
 export type AuthenticateResult<TClaims extends ClaimsShape = CustomClaims> =
   | { ok: true; claims: AccessTokenClaims<TClaims> }
   | { ok: false; response: ToklynHttpResponse };
 
+export type ResolveResult<TClaims extends ClaimsShape = CustomClaims> = (
+  | { status: 'authenticated'; claims: AccessTokenClaims<TClaims> }
+  | { status: 'unauthenticated' | 'unavailable' }
+) & {
+  /** Add these to the response, e.g. the rotated cookies. */
+  headers: HttpHeaders;
+  /** The `Cookie` header to forward to the app so it sees rotated tokens. Null means none. */
+  cookie: string | null;
+};
+
+export type AccessTokenTransport = 'bearer' | 'cookie';
+
 export interface ToklynHttpOptions {
-  cookie?: RefreshCookieOptions;
   /**
-   * Origins allowed to call refresh and logout, e.g. `https://app.example.com`.
-   * Same-origin browser requests are always allowed.
+   * `bearer` (default): the access token is in the JSON body and sent back as
+   * `Authorization: Bearer`. `cookie`: it is in an HttpOnly cookie, so server-rendered
+   * pages can read it. Cookie mode needs `reuseGraceMs` > 0 on `auth`.
+   */
+  accessToken?: AccessTokenTransport;
+  /** Refresh token cookie. Defaults: name `toklyn_refresh`, SameSite `Strict` (`Lax` in cookie mode). */
+  cookie?: CookieOptions;
+  /** Access token cookie, cookie mode only. Defaults: name `toklyn_access`, SameSite `Lax`. */
+  accessCookie?: CookieOptions;
+  /**
+   * Origins trusted for cookie-authenticated writes, e.g. `https://app.example.com`.
+   * Same-origin browser requests are always trusted. Required for SameSite `None`.
    */
   allowedOrigins?: readonly string[];
-  /** Used for the cookie's Max-Age. Defaults to the system clock. */
+  /** Used for the cookies' Max-Age. Defaults to the system clock. */
   clock?: Clock;
 }
 
-/**
- * Refresh token in an HttpOnly cookie; access token in the JSON body, sent back as
- * `Authorization: Bearer`.
- */
 export interface ToklynHttp<TClaims extends ClaimsShape = CustomClaims> {
+  readonly accessToken: AccessTokenTransport;
   readonly cookieName: string;
-  /** Verifies the Bearer token. Storage errors in `online` mode give a 503. */
+  /** Null in bearer mode. */
+  readonly accessCookieName: string | null;
+  /**
+   * Verifies the Bearer token, or the access cookie in cookie mode. Storage errors in
+   * `online` mode give a 503.
+   */
   authenticate(
     request: ToklynHttpRequest,
   ): Promise<AuthenticateResult<TClaims>>;
   /** Response for your own login route, after `auth.createSession`. */
   issue(tokens: TokenPair): ToklynHttpResponse;
   refresh(request: ToklynHttpRequest): Promise<ToklynHttpResponse>;
-  /** Revokes the cookie's session and clears the cookie. */
+  /** Revokes the cookie's session and clears the cookies. */
   logout(request: ToklynHttpRequest): Promise<ToklynHttpResponse>;
+  /**
+   * Cookie mode, for middleware in front of server-rendered pages: verifies the access
+   * cookie and refreshes it when needed. Untrusted cross-site writes are treated as
+   * signed out, and their auth cookies are not forwarded.
+   */
+  resolve(request: ToklynHttpRequest): Promise<ResolveResult<TClaims>>;
+  /**
+   * Cookie mode: claims from the access cookie in a `Cookie` header, or null. Never
+   * refreshes and does no origin check. Throws on storage errors.
+   */
+  readClaims(
+    cookieHeader: string | null | undefined,
+  ): Promise<AccessTokenClaims<TClaims> | null>;
 }
 
 const NO_STORE: readonly [string, string] = ['Cache-Control', 'no-store'];
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 export function createToklynHttp<TClaims extends ClaimsShape = CustomClaims>(
   auth: Auth<TClaims>,
   options: ToklynHttpOptions = {},
 ): ToklynHttp<TClaims> {
-  const cookie = createRefreshCookie(options.cookie);
+  const mode = options.accessToken ?? 'bearer';
+  if (mode !== 'bearer' && mode !== 'cookie') {
+    throw invalidConfig('accessToken must be "bearer" or "cookie"');
+  }
+  const cookieMode = mode === 'cookie';
+  if (!cookieMode && options.accessCookie !== undefined) {
+    throw invalidConfig('accessCookie needs accessToken "cookie"');
+  }
+  if (cookieMode && !(auth.reuseGraceMs > 0)) {
+    // Parallel page requests refresh with the same token; strict reuse detection would revoke the session.
+    throw invalidConfig('accessToken "cookie" needs reuseGraceMs > 0 on auth');
+  }
+
+  const refreshCookie = createCookie(
+    { name: 'toklyn_refresh', sameSite: cookieMode ? 'Lax' : 'Strict' },
+    options.cookie,
+  );
+  const accessCookie = cookieMode
+    ? createCookie(
+        { name: 'toklyn_access', sameSite: 'Lax' },
+        options.accessCookie,
+      )
+    : null;
+  if (accessCookie?.name === refreshCookie.name) {
+    throw invalidConfig('access and refresh cookies need different names');
+  }
   const allowedOrigins = toAllowedOrigins(options.allowedOrigins);
+  const allCookies = accessCookie
+    ? [refreshCookie, accessCookie]
+    : [refreshCookie];
+  if (
+    allCookies.some((cookie) => cookie.sameSite === 'None') &&
+    allowedOrigins.size === 0
+  ) {
+    throw invalidConfig('cookie sameSite "None" needs allowedOrigins');
+  }
   const clock = options.clock ?? systemClock;
 
-  const clearCookie: readonly [string, string] = [
+  const cookieNames = allCookies.map((cookie) => cookie.name);
+  const clearCookies: HttpHeaders = allCookies.map((cookie) => [
     'Set-Cookie',
     cookie.serializeClear(),
-  ];
+  ]);
+
+  function sessionCookies(tokens: TokenPair): HttpHeaders {
+    const now = clock.now();
+    const headers: [string, string][] = [
+      [
+        'Set-Cookie',
+        refreshCookie.serialize(
+          tokens.refreshToken,
+          tokens.refreshTokenExpiresAt,
+          now,
+        ),
+      ],
+    ];
+    if (accessCookie) {
+      headers.push([
+        'Set-Cookie',
+        accessCookie.serialize(
+          tokens.accessToken,
+          tokens.accessTokenExpiresAt,
+          now,
+        ),
+      ]);
+    }
+    return headers;
+  }
 
   function issue(tokens: TokenPair): ToklynHttpResponse {
-    const setCookie = cookie.serialize(
-      tokens.refreshToken,
-      tokens.refreshTokenExpiresAt,
-      clock.now(),
-    );
+    const body: CookieSessionResponseBody = {
+      accessTokenExpiresAt: tokens.accessTokenExpiresAt,
+      refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
+      sessionId: tokens.sessionId,
+    };
     return {
       status: 200,
-      headers: [['Set-Cookie', setCookie], NO_STORE],
-      body: {
-        accessToken: tokens.accessToken,
-        accessTokenExpiresAt: tokens.accessTokenExpiresAt,
-        refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
-        sessionId: tokens.sessionId,
-      },
+      headers: [...sessionCookies(tokens), NO_STORE],
+      body: accessCookie ? body : { accessToken: tokens.accessToken, ...body },
     };
   }
 
@@ -112,38 +213,75 @@ export function createToklynHttp<TClaims extends ClaimsShape = CustomClaims>(
     );
   }
 
+  function isTrustedWrite(request: ToklynHttpRequest): boolean {
+    return SAFE_METHODS.has(request.method.toUpperCase()) || isTrusted(request);
+  }
+
+  async function verify(
+    token: string,
+  ): Promise<AccessTokenClaims<TClaims> | 401 | 503> {
+    try {
+      return await auth.verifyAccessToken(token);
+    } catch (error) {
+      const mapped = toToklynHttpError(error);
+      if (!mapped) throw error;
+      return mapped.status;
+    }
+  }
+
+  function authFailure(status: 401 | 503): ToklynHttpResponse {
+    if (status === 503) return failure(503, []);
+    return failure(401, accessCookie ? [] : [['WWW-Authenticate', 'Bearer']]);
+  }
+
+  function requireAccessCookie(method: string): HttpCookie {
+    if (!accessCookie) {
+      throw invalidConfig(`${method}() needs accessToken "cookie"`);
+    }
+    return accessCookie;
+  }
+
   return {
-    cookieName: cookie.name,
+    accessToken: mode,
+    cookieName: refreshCookie.name,
+    accessCookieName: accessCookie?.name ?? null,
     issue,
 
     async authenticate(request) {
-      const token = extractBearerToken(request.header('authorization'));
-      if (token === null) {
-        return { ok: false, response: bearerFailure(401) };
+      let token: string | null;
+      if (accessCookie) {
+        if (!isTrustedWrite(request))
+          return { ok: false, response: forbidden() };
+        token = readCookie(request.header('cookie'), accessCookie.name);
+      } else {
+        token = extractBearerToken(request.header('authorization'));
       }
-      try {
-        return { ok: true, claims: await auth.verifyAccessToken(token) };
-      } catch (error) {
-        const mapped = toToklynHttpError(error);
-        if (!mapped) throw error;
-        return { ok: false, response: bearerFailure(mapped.status) };
+      if (token === null) return { ok: false, response: authFailure(401) };
+
+      const result = await verify(token);
+      if (typeof result === 'number') {
+        return { ok: false, response: authFailure(result) };
       }
+      return { ok: true, claims: result };
     },
 
     async refresh(request) {
       if (!isTrusted(request)) return forbidden();
 
-      const refreshToken = readCookie(request.header('cookie'), cookie.name);
-      if (refreshToken === null) return failure(401, [clearCookie]);
+      const refreshToken = readCookie(
+        request.header('cookie'),
+        refreshCookie.name,
+      );
+      if (refreshToken === null) return failure(401, clearCookies);
       try {
         return issue(await auth.refresh({ refreshToken }));
       } catch (error) {
         const mapped = toToklynHttpError(error);
         if (!mapped) throw error;
-        // Keep the cookie on 503: the token may still be valid once storage recovers.
+        // Keep the cookies on 503: the token may still be valid once storage recovers.
         return failure(
           mapped.status,
-          mapped.status === 401 ? [clearCookie] : [],
+          mapped.status === 401 ? clearCookies : [],
         );
       }
     },
@@ -151,7 +289,10 @@ export function createToklynHttp<TClaims extends ClaimsShape = CustomClaims>(
     async logout(request) {
       if (!isTrusted(request)) return forbidden();
 
-      const refreshToken = readCookie(request.header('cookie'), cookie.name);
+      const refreshToken = readCookie(
+        request.header('cookie'),
+        refreshCookie.name,
+      );
       if (refreshToken !== null) {
         try {
           // The store can only look a session up by id, so rotating is how we learn it.
@@ -160,31 +301,123 @@ export function createToklynHttp<TClaims extends ClaimsShape = CustomClaims>(
         } catch (error) {
           const mapped = toToklynHttpError(error);
           if (!mapped) throw error;
-          if (mapped.status === 503) return failure(503, [clearCookie]);
+          if (mapped.status === 503) return failure(503, clearCookies);
         }
       }
-      return { status: 204, headers: [clearCookie, NO_STORE], body: null };
+      return { status: 204, headers: [...clearCookies, NO_STORE], body: null };
+    },
+
+    async resolve(request) {
+      const access = requireAccessCookie('resolve');
+      const header = request.header('cookie') ?? null;
+      const signedOut = (headers: HttpHeaders): ResolveResult<TClaims> => ({
+        status: 'unauthenticated',
+        headers,
+        cookie: rewriteCookieHeader(header, cookieNames, []),
+      });
+
+      if (!isTrustedWrite(request)) return signedOut([]);
+
+      const accessToken = readCookie(header, access.name);
+      if (accessToken !== null) {
+        const result = await verify(accessToken);
+        if (result === 503) {
+          return { status: 'unavailable', headers: [NO_STORE], cookie: header };
+        }
+        if (result !== 401) {
+          return {
+            status: 'authenticated',
+            claims: result,
+            headers: [],
+            cookie: header,
+          };
+        }
+      }
+
+      const refreshToken = readCookie(header, refreshCookie.name);
+      if (refreshToken === null) {
+        return signedOut(
+          accessToken === null ? [] : [...clearCookies, NO_STORE],
+        );
+      }
+
+      let tokens: TokenPair;
+      try {
+        tokens = await auth.refresh({ refreshToken });
+      } catch (error) {
+        const mapped = toToklynHttpError(error);
+        if (!mapped) throw error;
+        if (mapped.status === 503) {
+          return { status: 'unavailable', headers: [NO_STORE], cookie: header };
+        }
+        return signedOut([...clearCookies, NO_STORE]);
+      }
+
+      // The old refresh token is spent, so the new cookies must be sent whatever happens next.
+      const headers = [...sessionCookies(tokens), NO_STORE];
+      const cookie = rewriteCookieHeader(header, cookieNames, [
+        [refreshCookie.name, tokens.refreshToken],
+        [access.name, tokens.accessToken],
+      ]);
+      const claims = await verify(tokens.accessToken);
+      if (typeof claims === 'number') {
+        return {
+          status: claims === 503 ? 'unavailable' : 'unauthenticated',
+          headers,
+          cookie,
+        };
+      }
+      return { status: 'authenticated', claims, headers, cookie };
+    },
+
+    async readClaims(cookieHeader) {
+      const access = requireAccessCookie('readClaims');
+      const token = readCookie(cookieHeader, access.name);
+      if (token === null) return null;
+      const result = await verify(token);
+      if (result === 401) return null;
+      if (result === 503) {
+        throw new ToklynError(
+          'storage_error',
+          'could not verify the access token',
+        );
+      }
+      return result;
     },
   };
 }
 
-function bearerFailure(status: 401 | 503): ToklynHttpResponse {
-  return status === 401
-    ? failure(401, [['WWW-Authenticate', 'Bearer']])
-    : failure(503, []);
+/** Drops the named cookies from a `Cookie` header and appends replacements. */
+function rewriteCookieHeader(
+  header: string | null,
+  remove: readonly string[],
+  add: ReadonlyArray<readonly [name: string, value: string]>,
+): string | null {
+  const kept = (header ?? '')
+    .split(';')
+    .map((pair) => pair.trim())
+    .filter((pair) => {
+      if (pair === '') return false;
+      const eq = pair.indexOf('=');
+      const name = (eq === -1 ? pair : pair.slice(0, eq)).trim();
+      return !remove.includes(name);
+    });
+  const pairs = [...kept, ...add.map(([name, value]) => `${name}=${value}`)];
+  return pairs.length === 0 ? null : pairs.join('; ');
 }
 
 function forbidden(): ToklynHttpResponse {
   return { status: 403, headers: [NO_STORE], body: { error: 'forbidden' } };
 }
 
-function failure(
-  status: 401 | 503,
-  headers: ReadonlyArray<readonly [string, string]>,
-): ToklynHttpResponse {
+function failure(status: 401 | 503, headers: HttpHeaders): ToklynHttpResponse {
   return {
     status,
     headers: [...headers, NO_STORE],
     body: { error: status === 401 ? 'unauthorized' : 'service_unavailable' },
   };
+}
+
+function invalidConfig(message: string): ToklynError {
+  return new ToklynError('invalid_config', message);
 }

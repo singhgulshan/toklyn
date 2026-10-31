@@ -35,7 +35,7 @@ class AuthManager<TClaims extends ClaimsShape> implements Auth<TClaims> {
   private readonly clock: Clock;
   private readonly codec: RefreshTokenCodec;
   private readonly online: boolean;
-  private readonly reuseGraceMs: number;
+  readonly reuseGraceMs: number;
 
   constructor(private readonly config: AuthConfig) {
     assertPositive(config.accessTokenTtlSeconds, 'accessTokenTtlSeconds');

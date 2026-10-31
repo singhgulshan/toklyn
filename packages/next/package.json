@@ -2,7 +2,7 @@
   "name": "@toklyn/next",
   "version": "0.0.0",
   "license": "MIT",
-  "description": "Next.js App Router route handlers for toklyn sessions.",
+  "description": "Next.js App Router helpers for toklyn sessions: route handlers, proxy and server components.",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",
@@ -17,6 +17,16 @@
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
+      }
+    },
+    "./server": {
+      "import": {
+        "types": "./dist/server.d.ts",
+        "default": "./dist/server.js"
+      },
+      "require": {
+        "types": "./dist/server.d.cts",
+        "default": "./dist/server.cjs"
       }
     },
     "./package.json": "./package.json"
@@ -38,14 +48,23 @@
     "check:exports": "attw --pack . --profile node16"
   },
   "peerDependencies": {
+    "next": ">=15.0.0",
     "toklyn": "workspace:^"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
     "@edge-runtime/vm": "^5.0.0",
     "@types/node": "^26.6.6",
+    "next": "^16.4.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "toklyn": "workspace:^",
     "tsup": "^9.0.0",
     "vitest": "^5.0.5"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
   }
 }

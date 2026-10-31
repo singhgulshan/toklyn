@@ -8,38 +8,47 @@ const COOKIE_PATH = /^\/[\x21-\x3A\x3C-\x7E]*$/;
 const DOMAIN =
   /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*$/;
 const RESERVED_PREFIX = /^__(?:host|secure)-/i;
-const SAME_SITE = new Set<string>(['Strict', 'Lax']);
+const SAME_SITE = new Set<string>(['Strict', 'Lax', 'None']);
 
-export interface RefreshCookieOptions {
-  /** Base name. `__Host-` or `__Secure-` is prepended when possible. Defaults to `toklyn_refresh`. */
+export type SameSite = 'Strict' | 'Lax' | 'None';
+
+export interface CookieOptions {
+  /** Base name. `__Host-` or `__Secure-` is prepended when possible. */
   name?: string;
-  /** Defaults to `/`. Scope it to your auth routes to send the cookie less often. */
+  /** Defaults to `/`. */
   path?: string;
   /** Omit to keep the cookie host-only. */
   domain?: string;
   /** Defaults to true. Only disable for local development over plain HTTP. */
   secure?: boolean;
-  /** Defaults to `Strict`. */
-  sameSite?: 'Strict' | 'Lax';
+  /** `None` requires `secure`. */
+  sameSite?: SameSite;
 }
 
-export interface RefreshCookie {
+export interface CookieDefaults {
+  name: string;
+  sameSite: SameSite;
+}
+
+export interface HttpCookie {
   /** Final name, including any prefix. */
   readonly name: string;
+  readonly sameSite: SameSite;
   /** A `Set-Cookie` value that stores the token until `expiresAt` (epoch ms). */
   serialize(token: string, expiresAt: number, now: number): string;
   /** A `Set-Cookie` value that deletes the cookie. */
   serializeClear(): string;
 }
 
-export function createRefreshCookie(
-  options: RefreshCookieOptions = {},
-): RefreshCookie {
-  const baseName = options.name ?? 'toklyn_refresh';
+export function createCookie(
+  defaults: CookieDefaults,
+  options: CookieOptions = {},
+): HttpCookie {
+  const baseName = options.name ?? defaults.name;
   const path = options.path ?? '/';
   const { domain } = options;
   const secure = options.secure ?? true;
-  const sameSite = options.sameSite ?? 'Strict';
+  const sameSite = options.sameSite ?? defaults.sameSite;
 
   if (!COOKIE_NAME.test(baseName) || RESERVED_PREFIX.test(baseName)) {
     throw invalidConfig('cookie name must be a plain token without a prefix');
@@ -54,7 +63,10 @@ export function createRefreshCookie(
     throw invalidConfig('cookie secure must be a boolean');
   }
   if (!SAME_SITE.has(sameSite)) {
-    throw invalidConfig('cookie sameSite must be "Strict" or "Lax"');
+    throw invalidConfig('cookie sameSite must be "Strict", "Lax" or "None"');
+  }
+  if (sameSite === 'None' && !secure) {
+    throw invalidConfig('cookie sameSite "None" requires secure');
   }
 
   const name = `${prefixFor(secure, path, domain)}${baseName}`;
@@ -68,6 +80,7 @@ export function createRefreshCookie(
 
   return {
     name,
+    sameSite,
     serialize(token, expiresAt, now) {
       if (!COOKIE_VALUE.test(token)) {
         throw new ToklynError('invalid_input', 'token is not a cookie value');
