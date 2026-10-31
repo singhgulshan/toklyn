@@ -1,6 +1,6 @@
 {
   "name": "@toklyn/express",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "description": "Express middleware and route handlers for toklyn sessions.",
   "keywords": [
