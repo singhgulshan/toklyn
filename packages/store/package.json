@@ -2,7 +2,7 @@
   "name": "@toklyn/store",
   "version": "0.4.0",
   "license": "MIT",
-  "description": "PostgreSQL, MySQL/MariaDB, SQLite and Redis session and access-token revocation stores for toklyn.",
+  "description": "PostgreSQL, MySQL/MariaDB, SQLite, MongoDB and Redis session and access-token revocation stores for toklyn.",
   "keywords": [
     "toklyn",
     "session-store",
@@ -13,6 +13,7 @@
     "sqlite",
     "libsql",
     "turso",
+    "mongodb",
     "redis",
     "valkey",
     "upstash",
@@ -58,6 +59,16 @@
       "require": {
         "types": "./dist/sqlite/index.d.cts",
         "default": "./dist/sqlite/index.cjs"
+      }
+    },
+    "./mongodb": {
+      "import": {
+        "types": "./dist/mongodb/index.d.ts",
+        "default": "./dist/mongodb/index.js"
+      },
+      "require": {
+        "types": "./dist/mongodb/index.d.cts",
+        "default": "./dist/mongodb/index.cjs"
       }
     },
     "./redis": {
@@ -106,6 +117,7 @@
     "better-sqlite3": "^13.0.3",
     "ioredis": "^6.0.0",
     "mariadb": "^3.5.4",
+    "mongodb": "^7.8.0",
     "mysql2": "^3.24.6",
     "pg": "^8.23.1",
     "postgres": "^4.0.0",
