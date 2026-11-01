@@ -1,0 +1,58 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security issue?** Do not file it here. Use the private report described in [SECURITY.md](https://github.com/singhgulshan/toklyn/blob/main/SECURITY.md).
+  - type: dropdown
+    id: packages
+    attributes:
+      label: Package(s)
+      multiple: true
+      options:
+        - toklyn
+        - '@toklyn/express'
+        - '@toklyn/fastify'
+        - '@toklyn/nest'
+        - '@toklyn/next'
+        - '@toklyn/store'
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: toklyn version
+      placeholder: 0.5.1
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Runtime and versions
+      description: Node.js / edge runtime, framework, database and driver versions.
+      placeholder: Node 24.1, Next.js 16.4, PostgreSQL 17 with pg 8.16
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Include the error message or toklyn error code.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: A short script or repository link. Remove secrets and tokens.
+      render: ts
+    validations:
+      required: true
