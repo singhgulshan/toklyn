@@ -1,0 +1,24 @@
+{
+  "name": "@toklyn/example-with-postgres",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "check": "tsx src/main.ts --all",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@toklyn/store": "workspace:*",
+    "pg": "^8.23.1",
+    "postgres": "^4.0.0",
+    "toklyn": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15"
+  }
+}

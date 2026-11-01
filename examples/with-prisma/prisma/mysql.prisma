@@ -1,0 +1,14 @@
+// Your app's own schema; toklyn's tables are created by `migrate()` and need no models here.
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/mysql"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id   String @id @db.VarChar(64)
+  role String
+}

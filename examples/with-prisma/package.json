@@ -1,0 +1,27 @@
+{
+  "name": "@toklyn/example-with-prisma",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "check": "tsx src/main.ts --all",
+    "prisma:generate": "prisma generate --schema prisma/postgres.prisma && prisma generate --schema prisma/mysql.prisma && prisma generate --schema prisma/sqlite.prisma",
+    "typecheck": "pnpm prisma:generate && tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.10.1",
+    "@prisma/adapter-mariadb": "^7.10.1",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "@toklyn/store": "workspace:*",
+    "toklyn": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "prisma": "^7.10.1",
+    "tsx": "^4.23.15"
+  }
+}

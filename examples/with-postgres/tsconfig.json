@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "node"
+    ],
+    // Runs and type-checks against the package sources, so no build is needed first.
+    "paths": {
+      "toklyn": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@toklyn/store/*": [
+        "../../packages/store/src/*/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src"
+  ]
+}

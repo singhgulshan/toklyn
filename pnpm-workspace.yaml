@@ -4,5 +4,7 @@ packages:
 allowBuilds:
   '@nestjs/core': false
   '@prisma/engines': false
+  better-sqlite3: true
   esbuild: false
   prisma: false
+  sqlite3: true

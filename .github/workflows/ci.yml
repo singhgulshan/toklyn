@@ -99,7 +99,8 @@ jobs:
           MONGODB_URL: mongodb://localhost:27017
       - name: Store examples (drivers and ORMs)
         if: matrix.node == 24
-        run: pnpm --filter @toklyn/example-stores demo:all
+        # One at a time: the examples share each database, and migrate() must not race.
+        run: pnpm --filter "./examples/with-*" --workspace-concurrency=1 run check
         env:
           REDIS_URL: redis://localhost:6379
           POSTGRES_URL: postgres://postgres:postgres@localhost:5432/postgres

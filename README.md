@@ -218,6 +218,7 @@ The algorithm always comes from your config, never from the token header ([RFC 8
 - A missing or short secret throws `invalid_config` at startup; the message never contains the value. Empty variables count as unset.
 - It reads `process.env` by default. On runtimes without it, such as Cloudflare Workers, pass the env object: `accessTokensFromEnv({ env })`.
 - Another service verifying these tokens must use the same text as the HMAC key, not its base64-decoded bytes.
+- [`examples/with-env-config`](examples/with-env-config) has a commented `.env.example` with every variable, and shows the resulting config and a secret rotation.
 
 ### In code
 
@@ -676,27 +677,33 @@ See also the [OWASP Session Management Cheat Sheet](https://cheatsheetseries.owa
 
 ## Examples
 
-Runnable apps in [`examples/`](examples), each with a demo login (`demo` / `demo`):
+Runnable apps in [`examples/`](examples). The app examples have a demo login (`demo` / `demo`):
 
-| Example                                  | Shows                                                                                                                                                                      |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`examples/express`](examples/express)   | Express API and a vanilla JS client: `TOKLYN_SECRET` from `.env`, optional auth, `onRefresh`, "sign out other devices", and app tests with `toklyn/test-utils`             |
-| [`examples/fastify`](examples/fastify)   | The same API on Fastify                                                                                                                                                    |
-| [`examples/nest`](examples/nest)         | NestJS with a global guard, `@ToklynPublic()` and `@ToklynOptional()` routes, plus a verify-only `ToklynModule.forResource` app (`start:resource`)                         |
-| [`examples/next`](examples/next)         | Next.js route handlers in bearer mode, with a sessions page                                                                                                                |
-| [`examples/next-ssr`](examples/next-ssr) | Next.js cookie mode: proxy, server components, server actions                                                                                                              |
-| [`examples/jwks`](examples/jwks)         | An Express auth service publishing ES256 keys as JWKS, and a Fastify API verifying its tokens with no secret and no session store                                          |
-| [`examples/stores`](examples/stores)     | Every store with native drivers and ORMs: Prisma, Drizzle, TypeORM, Sequelize, Knex, Kysely, Mongoose; see [Store examples](packages/store#examples-with-drivers-and-orms) |
+| Example                                                                                                      | Shows                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`express`](examples/express)                                                                                | Express API and a vanilla JS client: `TOKLYN_SECRET` from `.env`, optional auth, `onRefresh`, "sign out other devices", and app tests with `toklyn/test-utils` |
+| [`fastify`](examples/fastify)                                                                                | The same API on Fastify                                                                                                                                        |
+| [`nest`](examples/nest)                                                                                      | NestJS with a global guard, `@ToklynPublic()` and `@ToklynOptional()` routes, plus a verify-only `ToklynModule.forResource` app (`start:resource`)             |
+| [`next`](examples/next)                                                                                      | Next.js route handlers in bearer mode, with a sessions page                                                                                                    |
+| [`next-ssr`](examples/next-ssr)                                                                              | Next.js cookie mode: proxy, server components, server actions                                                                                                  |
+| [`jwks-resource-server`](examples/jwks-resource-server)                                                      | An Express auth service publishing ES256 keys as JWKS, and a Fastify API verifying its tokens with no secret and no session store                              |
+| [`with-env-config`](examples/with-env-config)                                                                | Every `TOKLYN_*` variable in a commented `.env.example`: secret, previous secret for rotation, issuer, audience, allowed origins, cookie domain                |
+| `with-postgres`, `with-mysql`, `with-sqlite`, `with-mongodb`, `with-redis`                                   | Each store with the database's native drivers                                                                                                                  |
+| `with-prisma`, `with-drizzle`, `with-typeorm`, `with-sequelize`, `with-knex`, `with-kysely`, `with-mongoose` | Each store on the connection your ORM already has; see [Store examples](packages/store#examples-with-drivers-and-orms)                                         |
+
+Every store example (the database and ORM `with-*` folders) runs the same walkthrough of the core API on its database: sign in, verify, rotate, update claims, reuse detection, parallel refreshes, "sign out other devices", access token revocation and logout. Read `src/walkthrough.ts` for the flow and `src/stores/` for the wiring.
 
 ```sh
 pnpm install
 pnpm build
-pnpm --filter @toklyn/example-express start   # or example-fastify start, example-jwks start, example-nest start, example-next dev, example-next-ssr dev
+pnpm --filter @toklyn/example-express start   # or example-fastify, example-jwks-resource-server, example-nest start; example-next, example-next-ssr dev
 pnpm --filter @toklyn/example-express test    # testing an app with toklyn/test-utils
-pnpm --filter @toklyn/example-stores demo sqlite/drizzle   # one store example; demo:all runs every one whose database is set
+pnpm --filter @toklyn/example-with-env-config start   # reads examples/with-env-config/.env (copy .env.example)
+pnpm --filter @toklyn/example-with-drizzle start sqlite   # a with-* example on one database
+POSTGRES_URL=postgres://... pnpm --filter @toklyn/example-with-prisma check   # every database whose URL is set
 ```
 
-The Express, Fastify and JWKS examples run TypeScript directly and need Node.js 22.18 or later. Without a `.env` file, they use a random secret per start.
+The store examples read `POSTGRES_URL`, `MYSQL_URL`, `MARIADB_URL`, `MONGODB_URL` and `REDIS_URL`; SQLite needs nothing. The Express, Fastify and JWKS examples run TypeScript directly and need Node.js 22.18 or later. Without a `.env` file, they use a random secret per start.
 
 ## Development
 

@@ -1,0 +1,22 @@
+{
+  "name": "@toklyn/example-with-mongoose",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "check": "tsx src/main.ts --all",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@toklyn/store": "workspace:*",
+    "mongoose": "^9.11.4",
+    "toklyn": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15"
+  }
+}
