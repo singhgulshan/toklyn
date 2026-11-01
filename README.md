@@ -37,19 +37,19 @@ toklyn issues short-lived JWT access tokens and long-lived opaque refresh tokens
 - **Secure defaults.** `HttpOnly`, `Secure`, `__Host-` cookies, `SameSite=Strict`, origin checks on cookie-authenticated writes, `Cache-Control: no-store`, the JWT algorithm pinned by config.
 - **Two transports.** Bearer tokens for SPAs and APIs, or HttpOnly access cookies for server-rendered pages.
 - **Framework adapters** for Express, NestJS and Next.js, built on one framework-neutral HTTP layer.
-- **Pluggable storage.** In-memory for development, PostgreSQL, MySQL/MariaDB, SQLite or Redis/Valkey/Upstash for production with the client you already use, or your own store, checked by a shipped contract test suite.
+- **Pluggable storage.** In-memory for development, PostgreSQL, MySQL/MariaDB, SQLite, MongoDB or Redis/Valkey/Upstash for production with the client you already use, or your own store, checked by a shipped contract test suite.
 - **Typed claims.** Your claims type flows through to every verified token; reserved JWT claim names are rejected at compile time and at runtime.
 - **Small and portable.** One runtime dependency ([`jose`](https://github.com/panva/jose)), Web Crypto only, ESM and CommonJS builds.
 
 ## Packages
 
-| Package                               | Description                                                                                                               | Version                                                                                                      |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| [`toklyn`](packages/core)             | Core: sessions, tokens, stores, plus `toklyn/http` and `toklyn/testing`                                                   | [![npm](https://img.shields.io/npm/v/toklyn?label=)](https://www.npmjs.com/package/toklyn)                   |
-| [`@toklyn/express`](packages/express) | Express 5 middleware and route handlers                                                                                   | [![npm](https://img.shields.io/npm/v/@toklyn/express?label=)](https://www.npmjs.com/package/@toklyn/express) |
-| [`@toklyn/nest`](packages/nest)       | NestJS module, guard and decorators                                                                                       | [![npm](https://img.shields.io/npm/v/@toklyn/nest?label=)](https://www.npmjs.com/package/@toklyn/nest)       |
-| [`@toklyn/next`](packages/next)       | Next.js App Router route handlers, proxy and server-component helpers                                                     | [![npm](https://img.shields.io/npm/v/@toklyn/next?label=)](https://www.npmjs.com/package/@toklyn/next)       |
-| [`@toklyn/store`](packages/store)     | PostgreSQL (`/postgres`), MySQL/MariaDB (`/mysql`), SQLite (`/sqlite`) and Redis (`/redis`) session and revocation stores | [![npm](https://img.shields.io/npm/v/@toklyn/store?label=)](https://www.npmjs.com/package/@toklyn/store)     |
+| Package                               | Description                                                                                                                                     | Version                                                                                                      |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| [`toklyn`](packages/core)             | Core: sessions, tokens, stores, plus `toklyn/http` and `toklyn/testing`                                                                         | [![npm](https://img.shields.io/npm/v/toklyn?label=)](https://www.npmjs.com/package/toklyn)                   |
+| [`@toklyn/express`](packages/express) | Express 5 middleware and route handlers                                                                                                         | [![npm](https://img.shields.io/npm/v/@toklyn/express?label=)](https://www.npmjs.com/package/@toklyn/express) |
+| [`@toklyn/nest`](packages/nest)       | NestJS module, guard and decorators                                                                                                             | [![npm](https://img.shields.io/npm/v/@toklyn/nest?label=)](https://www.npmjs.com/package/@toklyn/nest)       |
+| [`@toklyn/next`](packages/next)       | Next.js App Router route handlers, proxy and server-component helpers                                                                           | [![npm](https://img.shields.io/npm/v/@toklyn/next?label=)](https://www.npmjs.com/package/@toklyn/next)       |
+| [`@toklyn/store`](packages/store)     | PostgreSQL (`/postgres`), MySQL/MariaDB (`/mysql`), SQLite (`/sqlite`), MongoDB (`/mongodb`) and Redis (`/redis`) session and revocation stores | [![npm](https://img.shields.io/npm/v/@toklyn/store?label=)](https://www.npmjs.com/package/@toklyn/store)     |
 
 All packages share one version number and are released together.
 
@@ -431,6 +431,7 @@ More in the [`@toklyn/next` README](packages/next), [`examples/next`](examples/n
 | `PostgresSessionStore`, `PostgresAccessTokenRevocationStore` | [`@toklyn/store/postgres`](packages/store#postgresql)      | Production: PostgreSQL with any driver; one statement per operation, no transactions    |
 | `MySqlSessionStore`, `MySqlAccessTokenRevocationStore`       | [`@toklyn/store/mysql`](packages/store#mysql-and-mariadb)  | Production: MySQL 8.0+ or MariaDB 10.6+ (InnoDB); rotation in one locking transaction   |
 | `SqliteSessionStore`, `SqliteAccessTokenRevocationStore`     | [`@toklyn/store/sqlite`](packages/store#sqlite)            | Single-server apps: SQLite 3.37+ via `node:sqlite`, better-sqlite3, Bun or libSQL/Turso |
+| `MongoSessionStore`, `MongoAccessTokenRevocationStore`       | [`@toklyn/store/mongodb`](packages/store#mongodb)          | Production: MongoDB 6.0+ (standalone, replica set or Atlas); no transactions needed     |
 | `RedisSessionStore`, `RedisAccessTokenRevocationStore`       | [`@toklyn/store/redis`](packages/store#redis)              | Production: Redis 6.2+, built for Valkey, Upstash and Redis Cluster                     |
 | Your own                                                     | implement [`SessionStore`](packages/core/src/contracts.ts) | Any database with atomic updates                                                        |
 
@@ -557,7 +558,7 @@ The Express example runs TypeScript directly and needs Node.js 22.18 or later.
 ```sh
 pnpm install
 pnpm build
-pnpm test              # Redis tests need a server at REDIS_URL (default redis://localhost:6379); real-server Postgres, MySQL and MariaDB tests run when POSTGRES_URL, MYSQL_URL or MARIADB_URL is set; SQLite needs no server
+pnpm test              # Redis tests need a server at REDIS_URL (default redis://localhost:6379); real-server Postgres, MySQL, MariaDB and MongoDB tests run when POSTGRES_URL, MYSQL_URL, MARIADB_URL or MONGODB_URL is set; SQLite needs no server
 pnpm --filter @toklyn/store test:bun   # bun:sqlite tests; needs Bun and a prior pnpm build
 pnpm test:edge
 pnpm lint

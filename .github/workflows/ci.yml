@@ -65,6 +65,15 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 30
+      mongodb:
+        image: mongo:8
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 30
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -83,6 +92,7 @@ jobs:
           POSTGRES_URL: postgres://postgres:postgres@localhost:5432/postgres
           MYSQL_URL: mysql://root:root@127.0.0.1:3306
           MARIADB_URL: mysql://root:root@127.0.0.1:3307
+          MONGODB_URL: mongodb://localhost:27017
       - uses: oven-sh/setup-bun@v2
         if: matrix.node == 24
         with:
