@@ -1,5 +1,11 @@
 # toklyn
 
+## 0.5.1
+
+### Patch Changes
+
+- bfba92e: `httpOptionsFromEnv()` now types the options it adds (`allowedOrigins`, `cookie`, `accessCookie`), so `httpOptionsFromEnv({ accessToken: 'bearer' }).allowedOrigins` type-checks.
+
 ## 0.5.0
 
 ### Minor Changes
