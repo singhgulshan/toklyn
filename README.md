@@ -4,6 +4,7 @@
 
 [![npm](https://img.shields.io/npm/v/toklyn?color=cb3837&logo=npm)](https://www.npmjs.com/package/toklyn)
 [![CI](https://github.com/singhgulshan/toklyn/actions/workflows/ci.yml/badge.svg)](https://github.com/singhgulshan/toklyn/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/singhgulshan/toklyn/badge)](https://scorecard.dev/viewer/?uri=github.com/singhgulshan/toklyn)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/node/v/toklyn?logo=node.js)](https://nodejs.org)
 [![Types](https://img.shields.io/badge/types-included-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
