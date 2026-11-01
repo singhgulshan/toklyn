@@ -47,6 +47,7 @@ jobs:
         image: mysql:8.4
         env:
           MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: toklyn_example
         ports:
           - 3306:3306
         options: >-
@@ -58,6 +59,7 @@ jobs:
         image: mariadb:11
         env:
           MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: toklyn_example
         ports:
           - 3307:3306
         options: >-
@@ -94,6 +96,15 @@ jobs:
           POSTGRES_URL: postgres://postgres:postgres@localhost:5432/postgres
           MYSQL_URL: mysql://root:root@127.0.0.1:3306
           MARIADB_URL: mysql://root:root@127.0.0.1:3307
+          MONGODB_URL: mongodb://localhost:27017
+      - name: Store examples (drivers and ORMs)
+        if: matrix.node == 24
+        run: pnpm --filter @toklyn/example-stores demo:all
+        env:
+          REDIS_URL: redis://localhost:6379
+          POSTGRES_URL: postgres://postgres:postgres@localhost:5432/postgres
+          MYSQL_URL: mysql://root:root@127.0.0.1:3306/toklyn_example
+          MARIADB_URL: mysql://root:root@127.0.0.1:3307/toklyn_example
           MONGODB_URL: mongodb://localhost:27017
       - uses: oven-sh/setup-bun@v2
         if: matrix.node == 24

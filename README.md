@@ -678,20 +678,25 @@ See also the [OWASP Session Management Cheat Sheet](https://cheatsheetseries.owa
 
 Runnable apps in [`examples/`](examples), each with a demo login (`demo` / `demo`):
 
-| Example                                  | Shows                                                                                     |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------- |
-| [`examples/express`](examples/express)   | Express API and a vanilla JS client with in-memory access token and single-flight refresh |
-| [`examples/nest`](examples/nest)         | NestJS with a global guard and `@ToklynPublic()` routes                                   |
-| [`examples/next`](examples/next)         | Next.js route handlers in bearer mode, with a sessions page                               |
-| [`examples/next-ssr`](examples/next-ssr) | Next.js cookie mode: proxy, server components, server actions                             |
+| Example                                  | Shows                                                                                                                                                                      |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`examples/express`](examples/express)   | Express API and a vanilla JS client: `TOKLYN_SECRET` from `.env`, optional auth, `onRefresh`, "sign out other devices", and app tests with `toklyn/test-utils`             |
+| [`examples/fastify`](examples/fastify)   | The same API on Fastify                                                                                                                                                    |
+| [`examples/nest`](examples/nest)         | NestJS with a global guard, `@ToklynPublic()` and `@ToklynOptional()` routes, plus a verify-only `ToklynModule.forResource` app (`start:resource`)                         |
+| [`examples/next`](examples/next)         | Next.js route handlers in bearer mode, with a sessions page                                                                                                                |
+| [`examples/next-ssr`](examples/next-ssr) | Next.js cookie mode: proxy, server components, server actions                                                                                                              |
+| [`examples/jwks`](examples/jwks)         | An Express auth service publishing ES256 keys as JWKS, and a Fastify API verifying its tokens with no secret and no session store                                          |
+| [`examples/stores`](examples/stores)     | Every store with native drivers and ORMs: Prisma, Drizzle, TypeORM, Sequelize, Knex, Kysely, Mongoose; see [Store examples](packages/store#examples-with-drivers-and-orms) |
 
 ```sh
 pnpm install
 pnpm build
-pnpm --filter @toklyn/example-express start   # or example-nest start, example-next dev, example-next-ssr dev
+pnpm --filter @toklyn/example-express start   # or example-fastify start, example-jwks start, example-nest start, example-next dev, example-next-ssr dev
+pnpm --filter @toklyn/example-express test    # testing an app with toklyn/test-utils
+pnpm --filter @toklyn/example-stores demo sqlite/drizzle   # one store example; demo:all runs every one whose database is set
 ```
 
-The Express example runs TypeScript directly and needs Node.js 22.18 or later.
+The Express, Fastify and JWKS examples run TypeScript directly and need Node.js 22.18 or later. Without a `.env` file, they use a random secret per start.
 
 ## Development
 

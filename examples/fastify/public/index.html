@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>toklyn + Fastify</title>
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <h1>toklyn + Fastify</h1>
+    <form id="login">
+      <input name="username" value="demo" autocomplete="username" />
+      <input
+        name="password"
+        type="password"
+        value="demo"
+        autocomplete="current-password"
+      />
+      <button>Log in</button>
+    </form>
+    <p>
+      <button id="me">GET /api/me</button>
+      <button id="greeting">GET /api/greeting</button>
+      <button id="logout">Log out</button>
+    </p>
+    <pre id="output"></pre>
+  </body>
+</html>
