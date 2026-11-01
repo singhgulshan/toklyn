@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     'postgres/index': 'src/postgres/index.ts',
     'mysql/index': 'src/mysql/index.ts',
+    'sqlite/index': 'src/sqlite/index.ts',
     'redis/index': 'src/redis/index.ts',
   },
   format: ['esm', 'cjs'],

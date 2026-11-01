@@ -83,5 +83,11 @@ jobs:
           POSTGRES_URL: postgres://postgres:postgres@localhost:5432/postgres
           MYSQL_URL: mysql://root:root@127.0.0.1:3306
           MARIADB_URL: mysql://root:root@127.0.0.1:3307
+      - uses: oven-sh/setup-bun@v2
+        if: matrix.node == 24
+        with:
+          bun-version: 1.4.4
+      - run: pnpm --filter @toklyn/store test:bun
+        if: matrix.node == 24
       - run: pnpm test:edge
       - run: pnpm check:exports

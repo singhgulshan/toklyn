@@ -1,6 +1,6 @@
 # @toklyn/store
 
-**PostgreSQL, MySQL/MariaDB and Redis session and access-token revocation stores for [toklyn](https://github.com/singhgulshan/toklyn).**
+**PostgreSQL, MySQL/MariaDB, SQLite and Redis session and access-token revocation stores for [toklyn](https://github.com/singhgulshan/toklyn).**
 
 [![npm](https://img.shields.io/npm/v/@toklyn/store?color=cb3837&logo=npm)](https://www.npmjs.com/package/@toklyn/store)
 [![CI](https://github.com/singhgulshan/toklyn/actions/workflows/ci.yml/badge.svg)](https://github.com/singhgulshan/toklyn/actions/workflows/ci.yml)
@@ -8,11 +8,12 @@
 
 One package, one import path per database. Each store is written natively for its database, so refresh-token rotation is atomic across all your server instances, and an app only loads the database it imports.
 
-| Import                   | Database                                       | Atomic rotation                |
-| ------------------------ | ---------------------------------------------- | ------------------------------ |
-| `@toklyn/store/postgres` | PostgreSQL (tested on 17 and 18), PGlite, Neon | One SQL statement              |
-| `@toklyn/store/mysql`    | MySQL 8.0+, MariaDB 10.6+ (InnoDB)             | One transaction with row locks |
-| `@toklyn/store/redis`    | Redis 6.2+, Valkey, Upstash, Redis Cluster     | One Lua script                 |
+| Import                   | Database                                                 | Atomic rotation                        |
+| ------------------------ | -------------------------------------------------------- | -------------------------------------- |
+| `@toklyn/store/postgres` | PostgreSQL (tested on 17 and 18), PGlite, Neon           | One SQL statement                      |
+| `@toklyn/store/mysql`    | MySQL 8.0+, MariaDB 10.6+ (InnoDB)                       | One transaction with row locks         |
+| `@toklyn/store/sqlite`   | SQLite 3.37+: `node:sqlite`, better-sqlite3, Bun, libSQL | One transaction holding the write lock |
+| `@toklyn/store/redis`    | Redis 6.2+, Valkey, Upstash, Redis Cluster               | One Lua script                         |
 
 No runtime dependencies: bring the database client your app already uses. Every store passes the same contract tests from `toklyn/testing`, plus a parallel-refresh race test against a real server.
 
@@ -156,6 +157,73 @@ Expired rows are not removed automatically. Call `sessions.purgeExpired(Date.now
 | `clock`       | system clock              | Revocation store only; inject time in tests                               |
 
 The revocation store and `migrate` only need `query`, so any `MySqlExecutor` works there.
+
+## SQLite
+
+Clients: [`node:sqlite`](https://nodejs.org/api/sqlite.html) (built into Node 22.13+), [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3), [`bun:sqlite`](https://bun.sh/docs/api/sqlite) or [`@libsql/client`](https://github.com/tursodatabase/libsql-client-ts) (libSQL and Turso). Each is tested on a real database, in memory and on disk.
+
+```ts
+import {
+  SqliteAccessTokenRevocationStore,
+  SqliteSessionStore,
+  fromSyncDatabase,
+  migrate,
+} from '@toklyn/store/sqlite';
+import { DatabaseSync } from 'node:sqlite';
+import { createAuth } from 'toklyn';
+
+const db = new DatabaseSync('app.db');
+db.exec('PRAGMA journal_mode = WAL');
+const client = fromSyncDatabase(db);
+await migrate(client); // or put createSchemaSql() in your migrations
+
+const auth = createAuth({
+  // ...signer, verifier and lifetimes
+  sessions: new SqliteSessionStore({ client }),
+  revocations: new SqliteAccessTokenRevocationStore({ client }), // optional
+});
+```
+
+Rotation runs in a `BEGIN IMMEDIATE` transaction, which takes the database's write lock before reading the token. A concurrent refresh of the same token runs after it and sees the token consumed. When another connection holds the lock (`SQLITE_BUSY`), the store waits a few milliseconds and tries again, up to 10 times.
+
+Pick the adapter that matches your client:
+
+| Client                                                                   | Adapter                       |
+| ------------------------------------------------------------------------ | ----------------------------- |
+| `node:sqlite`, better-sqlite3, `bun:sqlite`: `prepare(sql).all()/.run()` | `fromSyncDatabase(db)`        |
+| libSQL/Turso: `execute({ sql, args })` and `transaction('write')`        | `fromExecuteDatabase(client)` |
+
+`fromSyncDatabase` runs the calls on one connection one at a time, so a transaction never mixes with other work on that connection. Any other client works if you implement `SqliteClient`: `all(sql, params)` returning rows, `run(sql, params)` returning the number of changed rows, and `transaction(fn)` that runs `fn` inside `BEGIN IMMEDIATE`.
+
+Recommended setup:
+
+- Turn on WAL mode (`PRAGMA journal_mode = WAL`) for a database file, so reads do not wait for writes.
+- Open one connection (or one libSQL client) per database in each process. Several processes can share one file.
+- With libSQL, use a file or Turso URL rather than `:memory:`, which has a single connection that a transaction holds.
+
+### Tables
+
+`migrate(client, options?)` creates the tables and indexes if they are missing, in one transaction. `createSchemaSql(options?)` returns the same DDL for your own migration tool. Both are safe to run more than once.
+
+| Table                             | Contents                                                                           |
+| --------------------------------- | ---------------------------------------------------------------------------------- |
+| `toklyn_sessions`                 | One row per session; claims and metadata as JSON text, times as `INTEGER` epoch ms |
+| `toklyn_refresh_tokens`           | SHA-256 hashes only; `purgeExpired` deletes them with their session                |
+| `toklyn_access_token_revocations` | Denylisted access-token ids until they expire                                      |
+
+Tables are `STRICT`, so a value of the wrong type is rejected. Text compares byte for byte: no case folding and no trailing-space padding. The store does not need `PRAGMA foreign_keys`.
+
+Expired rows are not removed automatically. Call `sessions.purgeExpired(Date.now())` and `revocations.purgeExpired()` from a scheduled job.
+
+### Options
+
+| Option        | Default           | Description                                                                         |
+| ------------- | ----------------- | ----------------------------------------------------------------------------------- |
+| `client`      | required (stores) | A `SqliteClient` from one of the adapters                                           |
+| `tablePrefix` | `'toklyn_'`       | Prefix for table and index names; up to 24 lowercase letters, digits or underscores |
+| `clock`       | system clock      | Revocation store only; inject time in tests                                         |
+
+The revocation store only needs `all` and `run`, so any `SqliteExecutor` works there.
 
 ## Redis
 

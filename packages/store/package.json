@@ -2,7 +2,7 @@
   "name": "@toklyn/store",
   "version": "0.3.0",
   "license": "MIT",
-  "description": "PostgreSQL, MySQL/MariaDB and Redis session and access-token revocation stores for toklyn.",
+  "description": "PostgreSQL, MySQL/MariaDB, SQLite and Redis session and access-token revocation stores for toklyn.",
   "keywords": [
     "toklyn",
     "session-store",
@@ -10,6 +10,9 @@
     "postgresql",
     "mysql",
     "mariadb",
+    "sqlite",
+    "libsql",
+    "turso",
     "redis",
     "valkey",
     "upstash",
@@ -47,6 +50,16 @@
         "default": "./dist/mysql/index.cjs"
       }
     },
+    "./sqlite": {
+      "import": {
+        "types": "./dist/sqlite/index.d.ts",
+        "default": "./dist/sqlite/index.js"
+      },
+      "require": {
+        "types": "./dist/sqlite/index.d.cts",
+        "default": "./dist/sqlite/index.cjs"
+      }
+    },
     "./redis": {
       "import": {
         "types": "./dist/redis/index.d.ts",
@@ -74,8 +87,9 @@
   "scripts": {
     "build": "tsup",
     "prepublishOnly": "pnpm run build",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.bun.json",
     "test": "vitest run",
+    "test:bun": "bun test tests/bun",
     "check:exports": "attw --pack . --profile node16"
   },
   "peerDependencies": {
@@ -84,8 +98,12 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
     "@electric-sql/pglite": "^0.5.13",
+    "@libsql/client": "^0.18.0",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/bun": "^1.4.4",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
+    "better-sqlite3": "^13.0.3",
     "ioredis": "^6.0.0",
     "mariadb": "^3.5.4",
     "mysql2": "^3.24.6",
