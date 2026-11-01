@@ -1,5 +1,15 @@
 # @toklyn/store
 
+## 0.4.0
+
+### Minor Changes
+
+- 59e45fc: Add `@toklyn/store/sqlite`: `SqliteSessionStore` and `SqliteAccessTokenRevocationStore` for SQLite 3.37+, with `fromSyncDatabase` (`node:sqlite`, better-sqlite3, `bun:sqlite`) and `fromExecuteDatabase` (libSQL/Turso) adapters, `migrate` and `createSchemaSql`. Rotation runs in a `BEGIN IMMEDIATE` transaction and is retried while the database is busy.
+
+### Patch Changes
+
+- toklyn@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes
