@@ -1,6 +1,6 @@
 # @toklyn/store
 
-**PostgreSQL, MySQL/MariaDB, SQLite and Redis session and access-token revocation stores for [toklyn](https://github.com/singhgulshan/toklyn).**
+**PostgreSQL, MySQL/MariaDB, SQLite, MongoDB and Redis session and access-token revocation stores for [toklyn](https://github.com/singhgulshan/toklyn).**
 
 [![npm](https://img.shields.io/npm/v/@toklyn/store?color=cb3837&logo=npm)](https://www.npmjs.com/package/@toklyn/store)
 [![CI](https://github.com/singhgulshan/toklyn/actions/workflows/ci.yml/badge.svg)](https://github.com/singhgulshan/toklyn/actions/workflows/ci.yml)
@@ -8,12 +8,13 @@
 
 One package, one import path per database. Each store is written natively for its database, so refresh-token rotation is atomic across all your server instances, and an app only loads the database it imports.
 
-| Import                   | Database                                                 | Atomic rotation                        |
-| ------------------------ | -------------------------------------------------------- | -------------------------------------- |
-| `@toklyn/store/postgres` | PostgreSQL (tested on 17 and 18), PGlite, Neon           | One SQL statement                      |
-| `@toklyn/store/mysql`    | MySQL 8.0+, MariaDB 10.6+ (InnoDB)                       | One transaction with row locks         |
-| `@toklyn/store/sqlite`   | SQLite 3.37+: `node:sqlite`, better-sqlite3, Bun, libSQL | One transaction holding the write lock |
-| `@toklyn/store/redis`    | Redis 6.2+, Valkey, Upstash, Redis Cluster               | One Lua script                         |
+| Import                   | Database                                                 | Atomic rotation                              |
+| ------------------------ | -------------------------------------------------------- | -------------------------------------------- |
+| `@toklyn/store/postgres` | PostgreSQL (tested on 17 and 18), PGlite, Neon           | One SQL statement                            |
+| `@toklyn/store/mysql`    | MySQL 8.0+, MariaDB 10.6+ (InnoDB)                       | One transaction with row locks               |
+| `@toklyn/store/sqlite`   | SQLite 3.37+: `node:sqlite`, better-sqlite3, Bun, libSQL | One transaction holding the write lock       |
+| `@toklyn/store/mongodb`  | MongoDB 6.0+: standalone, replica set or Atlas           | One compare-and-swap on the session document |
+| `@toklyn/store/redis`    | Redis 6.2+, Valkey, Upstash, Redis Cluster               | One Lua script                               |
 
 No runtime dependencies: bring the database client your app already uses. Every store passes the same contract tests from `toklyn/testing`, plus a parallel-refresh race test against a real server.
 
@@ -224,6 +225,54 @@ Expired rows are not removed automatically. Call `sessions.purgeExpired(Date.now
 | `clock`       | system clock      | Revocation store only; inject time in tests                                         |
 
 The revocation store only needs `all` and `run`, so any `SqliteExecutor` works there.
+
+## MongoDB
+
+Client: the official [`mongodb`](https://www.mongodb.com/docs/drivers/node/current/) driver (v6+). With Mongoose, pass `mongoose.connection.db`. Tested on MongoDB 7.0 and 8.2.
+
+```ts
+import {
+  MongoAccessTokenRevocationStore,
+  MongoSessionStore,
+  migrate,
+} from '@toklyn/store/mongodb';
+import { MongoClient } from 'mongodb';
+import { createAuth } from 'toklyn';
+
+const db = new MongoClient(process.env.MONGODB_URL!).db('app');
+await migrate(db); // creates the indexes
+
+const auth = createAuth({
+  // ...signer, verifier and lifetimes
+  sessions: new MongoSessionStore({ db }),
+  revocations: new MongoAccessTokenRevocationStore({ db }), // optional
+});
+```
+
+Each session is one document that also holds the hashes of its refresh tokens. Every change to a session checks and increments a version number on that document, so of two refreshes racing on the same token, only one write succeeds; the other reads the session again and sees the token used. A single-document update is atomic in MongoDB, so no transactions or replica set are needed.
+
+The document keeps the hash of every refresh token the session has used, so reuse of any old token is caught. It grows by about 220 bytes per refresh: a 30-day session refreshed every 15 minutes reaches about 620 KB, well under MongoDB's 16 MB document limit.
+
+### Collections
+
+`migrate(db, options?)` creates the indexes the stores rely on, including a unique index on refresh-token hashes. Run it once, such as in a deploy step. It is safe to run more than once.
+
+| Collection                        | Contents                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------- |
+| `toklyn_sessions`                 | One document per session; claims and metadata as JSON text, times as epoch ms, token hashes |
+| `toklyn_access_token_revocations` | Denylisted access-token ids until they expire                                               |
+
+Claims are stored as JSON text, so keys such as `$where` or `a.b` round-trip unchanged and never act as query operators. Ids, subjects and hashes must be strings; anything else is rejected with `invalid_input`.
+
+Expired documents are deleted by MongoDB itself (TTL indexes, checked about once a minute), so no cleanup job is needed. `purgeExpired` is still there if you want to delete them right away.
+
+### Options
+
+| Option             | Default      | Description                                                                    |
+| ------------------ | ------------ | ------------------------------------------------------------------------------ |
+| `db`               | required     | A database handle (`client.db(name)`)                                          |
+| `collectionPrefix` | `'toklyn_'`  | Prefix for collection names; up to 24 lowercase letters, digits or underscores |
+| `clock`            | system clock | Revocation store only; inject time in tests                                    |
 
 ## Redis
 
