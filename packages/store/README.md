@@ -228,7 +228,7 @@ The revocation store only needs `all` and `run`, so any `SqliteExecutor` works t
 
 ## MongoDB
 
-Client: the official [`mongodb`](https://www.mongodb.com/docs/drivers/node/current/) driver (v6+). With Mongoose, pass `mongoose.connection.db`. Tested on MongoDB 8.
+Client: the official [`mongodb`](https://www.mongodb.com/docs/drivers/node/current/) driver (v6+). With Mongoose, pass `mongoose.connection.db`. Tested on MongoDB 7.0 and 8.2.
 
 ```ts
 import {
