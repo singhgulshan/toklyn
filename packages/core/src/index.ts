@@ -7,5 +7,11 @@ export * from './create-auth.js';
 export * from './crypto/key-config.js';
 export * from './crypto/refresh-token-codec.js';
 export * from './crypto/jwt-access-tokens.js';
+export {
+  accessTokensFromEnv,
+  type EnvAccessTokens,
+  type FromEnvOptions,
+  type ToklynEnv,
+} from './env.js';
 export * from './storage/memory-store.js';
 export * from './storage/memory-revocation-store.js';
