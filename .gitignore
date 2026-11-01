@@ -4,3 +4,6 @@ dist
 *.tsbuildinfo
 .DS_Store
 .env
+examples/*/generated
+examples/*/*.db
+examples/*/*.db-*

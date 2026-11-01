@@ -1,0 +1,14 @@
+// Your app's own schema; toklyn's tables are created by `migrate()` and need no models here.
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/sqlite"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id   String @id
+  role String
+}

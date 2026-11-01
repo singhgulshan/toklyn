@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "node"
+    ],
+    // The generated Prisma client imports its own files with `.ts` extensions.
+    "allowImportingTsExtensions": true,
+    // Runs and type-checks against the package sources, so no build is needed first.
+    "paths": {
+      "toklyn": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@toklyn/store/*": [
+        "../../packages/store/src/*/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@toklyn/example-with-env-config",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "start": "tsx --env-file-if-exists=.env src/main.ts",
+    "check": "tsx src/main.ts --check",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "toklyn": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15"
+  }
+}

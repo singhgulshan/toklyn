@@ -1,0 +1,23 @@
+{
+  "name": "@toklyn/example-jwks-resource-server",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "start": "node src/server.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@toklyn/express": "workspace:*",
+    "@toklyn/fastify": "workspace:*",
+    "express": "^5.3.0",
+    "fastify": "^5.12.7",
+    "toklyn": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6"
+  }
+}

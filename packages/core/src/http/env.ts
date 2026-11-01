@@ -10,7 +10,7 @@ import type { ToklynHttpOptions } from './http-auth.js';
 export function httpOptionsFromEnv<T extends ToklynHttpOptions>(
   options: T = {} as T,
   from: FromEnvOptions = {},
-): T {
+): T & Pick<ToklynHttpOptions, 'allowedOrigins' | 'cookie' | 'accessCookie'> {
   const env = resolveEnv(from.env);
   const origins = readList(env, 'TOKLYN_ALLOWED_ORIGINS');
   const domain = readOptional(env, 'TOKLYN_COOKIE_DOMAIN');

@@ -1,5 +1,5 @@
 import { SignJWT, decodeProtectedHeader } from 'jose';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { createToklynHttp, httpOptionsFromEnv } from '#src/http/index.js';
 import {
   JwtAccessTokenVerifier,
@@ -297,6 +297,19 @@ describe('httpOptionsFromEnv', () => {
     const options = { accessToken: 'bearer' as const };
 
     expect(httpOptionsFromEnv(options, { env: {} })).toEqual(options);
+  });
+
+  it('types the added options even for narrow inputs', () => {
+    const options = httpOptionsFromEnv(
+      { accessToken: 'bearer' },
+      { env: { TOKLYN_ALLOWED_ORIGINS: 'https://app.example.com' } },
+    );
+
+    expectTypeOf(options.accessToken).toEqualTypeOf<'bearer'>();
+    expectTypeOf(options.allowedOrigins).toEqualTypeOf<
+      readonly string[] | undefined
+    >();
+    expect(options.allowedOrigins).toEqual(['https://app.example.com']);
   });
 
   it('leaves validation to createToklynHttp', () => {

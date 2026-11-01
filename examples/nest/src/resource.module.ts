@@ -15,7 +15,7 @@ class OrdersController {
 
 /**
  * A service that only verifies tokens: no secret and no session store, only the JWKS URL of
- * the service that signs them (for example `examples/jwks`).
+ * the service that signs them (for example `examples/jwks-resource-server`).
  */
 @Module({
   imports: [

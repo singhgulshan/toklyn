@@ -1,0 +1,24 @@
+{
+  "name": "@toklyn/example-with-sqlite",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "check": "tsx src/main.ts --all",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "@toklyn/store": "workspace:*",
+    "better-sqlite3": "^13.0.3",
+    "toklyn": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15"
+  }
+}
