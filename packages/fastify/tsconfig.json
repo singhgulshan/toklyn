@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "node"
+    ],
+    // Type-check against core sources so a fresh checkout needs no build first.
+    "paths": {
+      "toklyn": [
+        "../core/src/index.ts"
+      ],
+      "toklyn/http": [
+        "../core/src/http/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "tests",
+    "tsup.config.ts",
+    "vitest.config.ts"
+  ]
+}

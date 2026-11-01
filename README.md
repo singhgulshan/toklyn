@@ -38,7 +38,7 @@ toklyn issues short-lived JWT access tokens and long-lived opaque refresh tokens
 - **Secure defaults.** `HttpOnly`, `Secure`, `__Host-` cookies, `SameSite=Strict`, origin checks on cookie-authenticated writes, `Cache-Control: no-store`, the JWT algorithm pinned by config.
 - **Two transports.** Bearer tokens for SPAs and APIs, or HttpOnly access cookies for server-rendered pages.
 - **JWKS.** Publish your public keys and verify tokens on other services, with key caching and rotation.
-- **Framework adapters** for Express, NestJS and Next.js, built on one framework-neutral HTTP layer.
+- **Framework adapters** for Express, Fastify, NestJS and Next.js, built on one framework-neutral HTTP layer.
 - **Pluggable storage.** In-memory for development, PostgreSQL, MySQL/MariaDB, SQLite, MongoDB or Redis/Valkey/Upstash for production with the client you already use, or your own store, checked by a shipped contract test suite.
 - **Typed claims.** Your claims type flows through to every verified token; reserved JWT claim names are rejected at compile time and at runtime.
 - **Small and portable.** One runtime dependency ([`jose`](https://github.com/panva/jose)), Web Crypto only, ESM and CommonJS builds.
@@ -49,6 +49,7 @@ toklyn issues short-lived JWT access tokens and long-lived opaque refresh tokens
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | [`toklyn`](packages/core)             | Core: sessions, tokens, stores, plus `toklyn/http`, `toklyn/testing` and `toklyn/test-utils`                                                    | [![npm](https://img.shields.io/npm/v/toklyn?label=)](https://www.npmjs.com/package/toklyn)                   |
 | [`@toklyn/express`](packages/express) | Express 5 middleware and route handlers                                                                                                         | [![npm](https://img.shields.io/npm/v/@toklyn/express?label=)](https://www.npmjs.com/package/@toklyn/express) |
+| [`@toklyn/fastify`](packages/fastify) | Fastify 5 hooks and route handlers                                                                                                              | [![npm](https://img.shields.io/npm/v/@toklyn/fastify?label=)](https://www.npmjs.com/package/@toklyn/fastify) |
 | [`@toklyn/nest`](packages/nest)       | NestJS module, guard and decorators                                                                                                             | [![npm](https://img.shields.io/npm/v/@toklyn/nest?label=)](https://www.npmjs.com/package/@toklyn/nest)       |
 | [`@toklyn/next`](packages/next)       | Next.js App Router route handlers, proxy and server-component helpers                                                                           | [![npm](https://img.shields.io/npm/v/@toklyn/next?label=)](https://www.npmjs.com/package/@toklyn/next)       |
 | [`@toklyn/store`](packages/store)     | PostgreSQL (`/postgres`), MySQL/MariaDB (`/mysql`), SQLite (`/sqlite`), MongoDB (`/mongodb`) and Redis (`/redis`) session and revocation stores | [![npm](https://img.shields.io/npm/v/@toklyn/store?label=)](https://www.npmjs.com/package/@toklyn/store)     |
@@ -272,7 +273,7 @@ import { createJwks } from 'toklyn';
 
 const jwks = await createJwks(keyConfig.keys);
 
-app.get('/.well-known/jwks.json', jwksHandler(jwks)); // Express
+app.get('/.well-known/jwks.json', jwksHandler(jwks)); // Express or Fastify
 export const GET = jwksRoute(jwks); // Next.js: app/.well-known/jwks.json/route.ts
 ```
 
@@ -318,6 +319,12 @@ Services that only verify tokens have no session store, so they use the verify-o
 // Express
 const api = createToklynExpressResource(verifier);
 app.get('/api/me', api.requireAuth, (req, res) => res.json(getAuth(req)));
+
+// Fastify
+const api = createToklynFastifyResource(verifier);
+app.get('/api/me', { preHandler: api.requireAuth }, async (request) =>
+  getAuth(request),
+);
 
 // NestJS
 ToklynModule.forResource({ verifier }); // ToklynAuthGuard, @ToklynClaims() and @ToklynOptional() work as usual
@@ -375,7 +382,7 @@ For routes that serve guests and signed-in users, `authenticateOptional(request,
 | `'reject'` (default) | `401`, so the client refreshes instead of seeing guest data |
 | `'ignore'`           | Treated as a guest                                          |
 
-Storage errors in `online` mode always give `503`. The adapters expose it as `optionalAuth()` (Express), `@ToklynOptional()` (NestJS) and `withOptionalAuth()` (Next.js).
+Storage errors in `online` mode always give `503`. The adapters expose it as `optionalAuth()` (Express and Fastify), `@ToklynOptional()` (NestJS) and `withOptionalAuth()` (Next.js).
 
 ### HTTP options
 
@@ -448,6 +455,33 @@ app.get('/api/feed', toklyn.optionalAuth(), (req, res) =>
 ```
 
 More in the [`@toklyn/express` README](packages/express) and [`examples/express`](examples/express).
+
+### Fastify
+
+```ts
+import { createToklynFastify, getAuth, getOptionalAuth } from '@toklyn/fastify';
+
+const toklyn = createToklynFastify(auth);
+
+app.post('/api/login', async (request, reply) => {
+  const user = await checkPassword(request.body);
+  if (!user) return reply.code(401).send({ error: 'unauthorized' });
+  return toklyn.sendSession(
+    reply,
+    await auth.createSession({ subject: user.id }),
+  );
+});
+app.post('/api/refresh', toklyn.refreshHandler);
+app.post('/api/logout', toklyn.logoutHandler);
+app.get('/api/me', { preHandler: toklyn.requireAuth }, async (request) =>
+  getAuth<AppClaims>(request),
+);
+app.get('/api/feed', { preHandler: toklyn.optionalAuth() }, async (request) =>
+  feedFor(getOptionalAuth(request)?.sub ?? null),
+);
+```
+
+More in the [`@toklyn/fastify` README](packages/fastify).
 
 ### NestJS
 

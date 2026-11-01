@@ -6,6 +6,7 @@
     [
       "toklyn",
       "@toklyn/express",
+      "@toklyn/fastify",
       "@toklyn/nest",
       "@toklyn/next",
       "@toklyn/store"

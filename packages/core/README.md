@@ -70,6 +70,7 @@ await auth.revokeSession(claims.sid);
 ## Related packages
 
 - [`@toklyn/express`](https://www.npmjs.com/package/@toklyn/express): Express middleware and route handlers
+- [`@toklyn/fastify`](https://www.npmjs.com/package/@toklyn/fastify): Fastify hooks and route handlers
 - [`@toklyn/nest`](https://www.npmjs.com/package/@toklyn/nest): NestJS module, guard and decorators
 - [`@toklyn/next`](https://www.npmjs.com/package/@toklyn/next): Next.js App Router helpers
 - [`@toklyn/store`](https://www.npmjs.com/package/@toklyn/store): PostgreSQL, MySQL/MariaDB, SQLite, MongoDB and Redis (Valkey, Upstash) stores
