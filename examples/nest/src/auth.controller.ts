@@ -9,7 +9,12 @@ import {
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ToklynClaims, ToklynPublic, ToklynSessionService } from '@toklyn/nest';
+import {
+  ToklynClaims,
+  ToklynOptional,
+  ToklynPublic,
+  ToklynSessionService,
+} from '@toklyn/nest';
 import type { NodeStyleRequest } from '@toklyn/nest';
 import type { Response } from 'express';
 import type { AccessTokenClaims, Auth } from 'toklyn';
@@ -56,5 +61,14 @@ export class AuthController {
   me(@ToklynClaims() claims: AccessTokenClaims<AppClaims>) {
     const { sub, sid, role, exp } = claims;
     return { sub, sid, role, exp };
+  }
+
+  // Guests get the public view; signed-in users get theirs. Bad tokens still get 401.
+  @ToklynOptional()
+  @Get('greeting')
+  greeting(@ToklynClaims() claims: AccessTokenClaims<AppClaims> | null) {
+    return {
+      message: claims ? `Welcome back, ${claims.sub}` : 'Hello, guest',
+    };
   }
 }

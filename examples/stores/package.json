@@ -1,0 +1,44 @@
+{
+  "name": "@toklyn/example-stores",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "demo": "tsx src/demo.ts",
+    "demo:all": "tsx src/demo.ts --all",
+    "prisma:generate": "prisma generate --schema prisma/postgres.prisma && prisma generate --schema prisma/mysql.prisma",
+    "typecheck": "pnpm prisma:generate && tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "@prisma/adapter-mariadb": "^7.10.1",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "@toklyn/store": "workspace:*",
+    "@upstash/redis": "^1.40.0",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.4",
+    "ioredis": "^6.0.0",
+    "knex": "^3.3.0",
+    "kysely": "0.29.7",
+    "mariadb": "^3.5.4",
+    "mongodb": "^7.8.0",
+    "mongoose": "^9.11.4",
+    "mysql2": "^3.24.6",
+    "pg": "^8.23.1",
+    "postgres": "^4.0.0",
+    "redis": "^6.3.1",
+    "sequelize": "^6.37.8",
+    "toklyn": "workspace:*",
+    "typeorm": "^1.1.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "prisma": "^7.10.1",
+    "tsx": "^4.23.15"
+  }
+}

@@ -4,6 +4,8 @@
     "types": [
       "node"
     ],
+    // Node runs the .ts files directly (type stripping), so imports name them.
+    "allowImportingTsExtensions": true,
     // Type-check against sources so a fresh checkout needs no build first.
     "paths": {
       "toklyn": [
@@ -12,12 +14,17 @@
       "toklyn/http": [
         "../../packages/core/src/http/index.ts"
       ],
+      "toklyn/test-utils": [
+        "../../packages/core/src/test-utils/index.ts"
+      ],
       "@toklyn/express": [
         "../../packages/express/src/index.ts"
       ]
     }
   },
   "include": [
-    "src"
+    "src",
+    "tests",
+    "vitest.config.ts"
   ]
 }

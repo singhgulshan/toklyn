@@ -20,9 +20,10 @@ function refresh() {
   return refreshing;
 }
 
-async function api(path) {
+async function api(path, init = {}) {
   const call = () =>
     fetch(path, {
+      ...init,
       headers: accessToken ? { authorization: `Bearer ${accessToken}` } : {},
     });
   let response = await call();
@@ -46,6 +47,23 @@ document.getElementById('login').addEventListener('submit', async (event) => {
 document.getElementById('me').addEventListener('click', async () => {
   const response = await api('/api/me');
   show(`me: ${response.status}`, await response.json());
+});
+
+document.getElementById('greeting').addEventListener('click', async () => {
+  const response = await api('/api/greeting');
+  show(`greeting: ${response.status}`, await response.json());
+});
+
+document.getElementById('sessions').addEventListener('click', async () => {
+  const response = await api('/api/sessions');
+  show(`sessions: ${response.status}`, await response.json());
+});
+
+document.getElementById('revoke-others').addEventListener('click', async () => {
+  const response = await api('/api/sessions/revoke-others', {
+    method: 'POST',
+  });
+  show(`sign out other devices: ${response.status}`, null);
 });
 
 document.getElementById('logout').addEventListener('click', async () => {

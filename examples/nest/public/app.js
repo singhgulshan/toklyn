@@ -48,6 +48,11 @@ document.getElementById('me').addEventListener('click', async () => {
   show(`me: ${response.status}`, await response.json());
 });
 
+document.getElementById('greeting').addEventListener('click', async () => {
+  const response = await api('/api/greeting');
+  show(`greeting: ${response.status}`, await response.json());
+});
+
 document.getElementById('logout').addEventListener('click', async () => {
   const response = await fetch('/api/logout', { method: 'POST' });
   accessToken = null;
