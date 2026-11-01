@@ -1,5 +1,17 @@
 # @toklyn/store
 
+## 0.5.0
+
+### Minor Changes
+
+- 0349764: Add `@toklyn/store/mongodb`: `MongoSessionStore` and `MongoAccessTokenRevocationStore` for MongoDB 6.0+ with the official driver (or `mongoose.connection.db`), plus `migrate` for the indexes. Rotation is a compare-and-swap on one session document, so it is atomic without transactions or a replica set. Expired documents are removed by TTL indexes.
+
+### Patch Changes
+
+- Updated dependencies [1a2e2c7]
+- Updated dependencies [92cc122]
+  - toklyn@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

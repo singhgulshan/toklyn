@@ -1,5 +1,17 @@
 # @toklyn/express
 
+## 0.5.0
+
+### Minor Changes
+
+- 92cc122: Add JWKS support. `createJwks(keys)` publishes the public asymmetric keys (HS keys are never published), served with `jwksHandler` (Express), `jwksRoute` (Next.js) or `jwksResponse` (`toklyn/http`). `RemoteJwksAccessTokenVerifier` verifies tokens against a remote JWKS with key caching, refetch on unknown `kid`, a required algorithm allow-list and `storage_error` (503) when the JWKS is unreachable. Verify-only services get Bearer guards without a session store: `createToklynResource` (`toklyn/http`), `createToklynExpressResource`, `ToklynModule.forResource`/`forResourceAsync` and `createToklynNextResource`.
+
+### Patch Changes
+
+- Updated dependencies [1a2e2c7]
+- Updated dependencies [92cc122]
+  - toklyn@0.5.0
+
 ## 0.4.0
 
 ### Patch Changes

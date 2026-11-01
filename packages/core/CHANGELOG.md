@@ -1,5 +1,12 @@
 # toklyn
 
+## 0.5.0
+
+### Minor Changes
+
+- 1a2e2c7: Add `accessTokensFromEnv()` (HS256 from `TOKLYN_SECRET`, with `TOKLYN_SECRET_PREVIOUS` for rotation, `TOKLYN_ISSUER` and `TOKLYN_AUDIENCE`), `httpOptionsFromEnv()` in `toklyn/http` (`TOKLYN_ALLOWED_ORIGINS`, `TOKLYN_COOKIE_DOMAIN`), and `toklyn/test-utils` with `createTestAuth` and `createTestClock` for any test runner. Passing keys in code works as before.
+- 92cc122: Add JWKS support. `createJwks(keys)` publishes the public asymmetric keys (HS keys are never published), served with `jwksHandler` (Express), `jwksRoute` (Next.js) or `jwksResponse` (`toklyn/http`). `RemoteJwksAccessTokenVerifier` verifies tokens against a remote JWKS with key caching, refetch on unknown `kid`, a required algorithm allow-list and `storage_error` (503) when the JWKS is unreachable. Verify-only services get Bearer guards without a session store: `createToklynResource` (`toklyn/http`), `createToklynExpressResource`, `ToklynModule.forResource`/`forResourceAsync` and `createToklynNextResource`.
+
 ## 0.4.0
 
 No changes in this release.
