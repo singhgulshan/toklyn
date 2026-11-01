@@ -7,6 +7,7 @@ import type {
 import type {
   HttpHeaders,
   OptionalAuthOptions,
+  ToklynAuthenticator,
   ToklynHttp,
   ToklynHttpRequest,
   ToklynHttpResponse,
@@ -28,13 +29,7 @@ export type ToklynRouteHandler<
   TContext extends object,
 > = (request: TRequest, context: TContext) => Promise<Response>;
 
-export interface ToklynNext<TClaims extends ClaimsShape = CustomClaims> {
-  /** Export as `POST`. Rotates the refresh cookie and returns a new session. */
-  refresh(request: Request): Promise<Response>;
-  /** Export as `POST`. Revokes the cookie's session and clears the cookies. */
-  logout(request: Request): Promise<Response>;
-  /** The login response for your own route, after `auth.createSession`. */
-  sessionResponse(tokens: TokenPair): Response;
+export interface ToklynNextGuards<TClaims extends ClaimsShape = CustomClaims> {
   /**
    * Wraps a route handler so it only runs with a valid access token. The handler gets
    * the route context (e.g. `params`) plus `claims`.
@@ -61,10 +56,22 @@ export interface ToklynNext<TClaims extends ClaimsShape = CustomClaims> {
   ): ToklynRouteHandler<TRequest, TContext>;
 }
 
+export interface ToklynNext<
+  TClaims extends ClaimsShape = CustomClaims,
+> extends ToklynNextGuards<TClaims> {
+  /** Export as `POST`. Rotates the refresh cookie and returns a new session. */
+  refresh(request: Request): Promise<Response>;
+  /** Export as `POST`. Revokes the cookie's session and clears the cookies. */
+  logout(request: Request): Promise<Response>;
+  /** The login response for your own route, after `auth.createSession`. */
+  sessionResponse(tokens: TokenPair): Response;
+}
+
 export function routeHandlers<TClaims extends ClaimsShape>(
   http: ToklynHttp<TClaims>,
 ): ToklynNext<TClaims> {
   return {
+    ...guards(http),
     async refresh(request) {
       return toResponse(await http.refresh(toHttpRequest(request)));
     },
@@ -74,6 +81,13 @@ export function routeHandlers<TClaims extends ClaimsShape>(
     sessionResponse(tokens) {
       return toResponse(http.issue(tokens));
     },
+  };
+}
+
+export function guards<TClaims extends ClaimsShape>(
+  http: ToklynAuthenticator<TClaims>,
+): ToklynNextGuards<TClaims> {
+  return {
     withAuth(handler) {
       return async (request, context) => {
         const result = await http.authenticate(toHttpRequest(request));
@@ -109,7 +123,7 @@ export function appendHeaders<T extends Response>(
   return response;
 }
 
-function toResponse(response: ToklynHttpResponse): Response {
+export function toResponse(response: ToklynHttpResponse): Response {
   const headers = new Headers();
   for (const [name, value] of response.headers) headers.append(name, value);
   if (response.body === null) {

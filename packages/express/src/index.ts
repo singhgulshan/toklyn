@@ -1,26 +1,38 @@
 import type { Request, RequestHandler, Response } from 'express';
 import type {
   AccessTokenClaims,
+  AccessTokenVerifier,
   Auth,
   ClaimsShape,
   CustomClaims,
+  JsonWebKeySet,
   TokenPair,
 } from 'toklyn';
-import { createToklynHttp } from 'toklyn/http';
+import {
+  createToklynHttp,
+  createToklynResource,
+  jwksResponse,
+} from 'toklyn/http';
 import type {
   OptionalAuthOptions,
+  ToklynAuthenticator,
   ToklynHttpOptions,
   ToklynHttpRequest,
   ToklynHttpResponse,
+  ToklynResourceOptions,
 } from 'toklyn/http';
 
 export type ToklynExpressOptions = ToklynHttpOptions;
+export type ToklynExpressResourceOptions = ToklynResourceOptions;
 
-export interface ToklynExpress {
+export interface ToklynExpressGuards {
   /** Rejects the request with 401 unless it carries a valid access token. */
   requireAuth: RequestHandler;
   /** Lets guests through; read the claims with `getOptionalAuth(req)`. */
   optionalAuth(options?: OptionalAuthOptions): RequestHandler;
+}
+
+export interface ToklynExpress extends ToklynExpressGuards {
   /** Mount on POST. Rotates the refresh cookie and returns a new access token. */
   refreshHandler: RequestHandler;
   /** Mount on POST. Revokes the cookie's session and clears the cookie. */
@@ -39,6 +51,40 @@ export function createToklynExpress<TClaims extends ClaimsShape = CustomClaims>(
   const http = createToklynHttp(auth, options);
 
   return {
+    ...guards(http),
+    async refreshHandler(req, res) {
+      send(res, await http.refresh(toHttpRequest(req)));
+    },
+    async logoutHandler(req, res) {
+      send(res, await http.logout(toHttpRequest(req)));
+    },
+    sendSession(res, tokens) {
+      send(res, http.issue(tokens));
+    },
+  };
+}
+
+/**
+ * Guards for a service that only verifies tokens, e.g. with a
+ * `RemoteJwksAccessTokenVerifier`. Bearer tokens only; `getAuth` works as usual.
+ */
+export function createToklynExpressResource(
+  verifier: AccessTokenVerifier,
+  options: ToklynExpressResourceOptions = {},
+): ToklynExpressGuards {
+  return guards(createToklynResource(verifier, options));
+}
+
+/** Mount on GET `/.well-known/jwks.json`. Build the set once with `createJwks`. */
+export function jwksHandler(jwks: JsonWebKeySet): RequestHandler {
+  const response = jwksResponse(jwks);
+  return (_req, res) => send(res, response);
+}
+
+function guards<TClaims extends ClaimsShape>(
+  http: ToklynAuthenticator<TClaims>,
+): ToklynExpressGuards {
+  return {
     async requireAuth(req, res, next) {
       const result = await http.authenticate(toHttpRequest(req));
       if (!result.ok) return send(res, result.response);
@@ -55,15 +101,6 @@ export function createToklynExpress<TClaims extends ClaimsShape = CustomClaims>(
         claimsByRequest.set(req, result.claims);
         next();
       };
-    },
-    async refreshHandler(req, res) {
-      send(res, await http.refresh(toHttpRequest(req)));
-    },
-    async logoutHandler(req, res) {
-      send(res, await http.logout(toHttpRequest(req)));
-    },
-    sendSession(res, tokens) {
-      send(res, http.issue(tokens));
     },
   };
 }

@@ -128,6 +128,24 @@ Everything above, always in cookie mode, plus:
 | `isPublic(pathname)` | Pages shown to signed-out visitors. Defaults to only `loginPath`                             |
 | other                | The [HTTP options](https://github.com/singhgulshan/toklyn#http-options) except `accessToken` |
 
+### `jwksRoute(jwks)`
+
+Export as `GET` from `app/.well-known/jwks.json/route.ts` to publish the set from `createJwks`. See [Publishing keys](https://github.com/singhgulshan/toklyn#publishing-keys-jwks).
+
+### `createToklynNextResource(verifier, options?)`
+
+For services that only verify tokens, for example with a `RemoteJwksAccessTokenVerifier`. Returns `withAuth` and `withOptionalAuth` for Bearer tokens. `options.clock` sets the time tokens are checked against.
+
+```ts
+const api = createToklynNextResource<AppClaims>(
+  new RemoteJwksAccessTokenVerifier({
+    url: 'https://auth.example.com/.well-known/jwks.json',
+    algorithms: ['ES256'],
+  }),
+);
+export const GET = api.withAuth((request, { claims }) => Response.json(claims));
+```
+
 ## Links
 
 - [Full documentation](https://github.com/singhgulshan/toklyn#readme)

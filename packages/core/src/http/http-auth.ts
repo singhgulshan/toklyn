@@ -1,6 +1,7 @@
 import type { Auth } from '#src/auth.js';
 import { systemClock } from '#src/clock.js';
 import type { Clock } from '#src/contracts.js';
+import type { JsonWebKeySet } from '#src/crypto/jwks.js';
 import { ToklynError } from '#src/errors.js';
 import type {
   AccessTokenClaims,
@@ -43,7 +44,11 @@ export interface ToklynHttpResponse {
   headers: HttpHeaders;
   /** Serialize as JSON. Null means no body. */
   body:
-    SessionResponseBody | CookieSessionResponseBody | ErrorResponseBody | null;
+    | SessionResponseBody
+    | CookieSessionResponseBody
+    | ErrorResponseBody
+    | JsonWebKeySet
+    | null;
 }
 
 export type AuthenticateResult<TClaims extends ClaimsShape = CustomClaims> =
@@ -97,11 +102,10 @@ export interface ToklynHttpOptions {
   clock?: Clock;
 }
 
-export interface ToklynHttp<TClaims extends ClaimsShape = CustomClaims> {
-  readonly accessToken: AccessTokenTransport;
-  readonly cookieName: string;
-  /** Null in bearer mode. */
-  readonly accessCookieName: string | null;
+/** What route guards need: works with a full `ToklynHttp` or a verify-only `ToklynResource`. */
+export interface ToklynAuthenticator<
+  TClaims extends ClaimsShape = CustomClaims,
+> {
   /**
    * Verifies the Bearer token, or the access cookie in cookie mode. Storage errors in
    * `online` mode give a 503.
@@ -117,6 +121,15 @@ export interface ToklynHttp<TClaims extends ClaimsShape = CustomClaims> {
     request: ToklynHttpRequest,
     options?: OptionalAuthOptions,
   ): Promise<OptionalAuthenticateResult<TClaims>>;
+}
+
+export interface ToklynHttp<
+  TClaims extends ClaimsShape = CustomClaims,
+> extends ToklynAuthenticator<TClaims> {
+  readonly accessToken: AccessTokenTransport;
+  readonly cookieName: string;
+  /** Null in bearer mode. */
+  readonly accessCookieName: string | null;
   /** Response for your own login route, after `auth.createSession`. */
   issue(tokens: TokenPair): ToklynHttpResponse;
   refresh(request: ToklynHttpRequest): Promise<ToklynHttpResponse>;

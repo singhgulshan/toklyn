@@ -7,6 +7,7 @@ export * from './create-auth.js';
 export * from './crypto/key-config.js';
 export * from './crypto/refresh-token-codec.js';
 export * from './crypto/jwt-access-tokens.js';
+export * from './crypto/jwks.js';
 export {
   accessTokensFromEnv,
   type EnvAccessTokens,

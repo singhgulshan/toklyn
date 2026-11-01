@@ -2,10 +2,16 @@ import {
   JwtAccessTokenSigner,
   JwtAccessTokenVerifier,
   MemorySessionStore,
+  RemoteJwksAccessTokenVerifier,
   createAuth,
+  createJwks,
 } from 'toklyn';
 import { describe, expect, it } from 'vitest';
-import { createToklynNext } from '#src/index.js';
+import {
+  createToklynNext,
+  createToklynNextResource,
+  jwksRoute,
+} from '#src/index.js';
 
 const BASE = 'https://app.example.com';
 const COOKIE = '__Host-toklyn_refresh';
@@ -250,5 +256,73 @@ describe('@toklyn/next', () => {
     await expect(
       routes.broken(getItem(`Bearer ${accessToken}`), {}),
     ).rejects.toThrow('handler failed');
+  });
+});
+
+describe('@toklyn/next with JWKS', () => {
+  async function setupPair() {
+    const { privateKey, publicKey } = (await crypto.subtle.generateKey(
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      true,
+      ['sign', 'verify'],
+    )) as CryptoKeyPair;
+    const keys = [
+      { kid: 'k1', algorithm: 'ES256' as const, privateKey, publicKey },
+    ];
+    const auth = createAuth<{ role: string }>({
+      signer: new JwtAccessTokenSigner({ keys }),
+      verifier: new JwtAccessTokenVerifier({ keys }),
+      sessions: new MemorySessionStore(),
+      accessTokenTtlSeconds: 900,
+      refreshTokenTtlSeconds: 3600,
+      sessionMaxAgeSeconds: 86_400,
+    });
+    const jwksGet = jwksRoute(await createJwks(keys));
+
+    // The other service fetches the auth service's route handler directly.
+    const resource = createToklynNextResource<{ role: string }>(
+      new RemoteJwksAccessTokenVerifier({
+        url: `${BASE}/.well-known/jwks.json`,
+        algorithms: ['ES256'],
+        fetch: async () => jwksGet(),
+      }),
+    );
+    const item = resource.withAuth<Request, RouteContext>(
+      async (_request, { params, claims }) =>
+        Response.json({ id: (await params).id, role: claims.role }),
+    );
+    const feed = resource.withOptionalAuth((_request, { claims }) =>
+      Response.json({ sub: claims?.sub ?? null }),
+    );
+    return { auth, jwksGet, item, feed };
+  }
+
+  it('serves the public keys as JSON with a cache header', async () => {
+    const { jwksGet } = await setupPair();
+    const response = jwksGet();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/json');
+    expect(response.headers.get('cache-control')).toBe('public, max-age=300');
+    const body = (await response.json()) as { keys: object[] };
+    expect(body.keys).toEqual([
+      expect.objectContaining({ kid: 'k1', alg: 'ES256', use: 'sig' }),
+    ]);
+  });
+
+  it('verifies tokens from the auth service', async () => {
+    const { auth, item, feed } = await setupPair();
+    const { accessToken } = await auth.createSession({
+      subject: 'u1',
+      claims: { role: 'admin' },
+    });
+
+    const ok = await item(getItem(`Bearer ${accessToken}`), context);
+    expect(await ok.json()).toEqual({ id: '42', role: 'admin' });
+
+    const anonymous = await item(getItem(), context);
+    expect(anonymous.status).toBe(401);
+    expect(anonymous.headers.get('www-authenticate')).toBe('Bearer');
+    expect(await (await feed(getItem(), {})).json()).toEqual({ sub: null });
   });
 });

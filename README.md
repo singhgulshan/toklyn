@@ -37,6 +37,7 @@ toklyn issues short-lived JWT access tokens and long-lived opaque refresh tokens
 - **Server-side sessions.** List a user's sessions, revoke one, or sign a user out everywhere.
 - **Secure defaults.** `HttpOnly`, `Secure`, `__Host-` cookies, `SameSite=Strict`, origin checks on cookie-authenticated writes, `Cache-Control: no-store`, the JWT algorithm pinned by config.
 - **Two transports.** Bearer tokens for SPAs and APIs, or HttpOnly access cookies for server-rendered pages.
+- **JWKS.** Publish your public keys and verify tokens on other services, with key caching and rotation.
 - **Framework adapters** for Express, NestJS and Next.js, built on one framework-neutral HTTP layer.
 - **Pluggable storage.** In-memory for development, PostgreSQL, MySQL/MariaDB, SQLite, MongoDB or Redis/Valkey/Upstash for production with the client you already use, or your own store, checked by a shipped contract test suite.
 - **Typed claims.** Your claims type flows through to every verified token; reserved JWT claim names are rejected at compile time and at runtime.
@@ -261,6 +262,73 @@ Give your key a `kid` from the start. A token without a `kid` can only be verifi
 | `issuer`                   | Sets and checks `iss`                                |
 | `audience`                 | Sets and checks `aud`                                |
 | `clockToleranceSeconds`    | Allowed clock skew when checking `exp`; default `0`  |
+
+### Publishing keys (JWKS)
+
+With asymmetric keys, other services can verify tokens without any secret. `createJwks(keys)` builds a JSON Web Key Set ([RFC 7517](https://www.rfc-editor.org/rfc/rfc7517)) from your key config, and the adapters serve it:
+
+```ts
+import { createJwks } from 'toklyn';
+
+const jwks = await createJwks(keyConfig.keys);
+
+app.get('/.well-known/jwks.json', jwksHandler(jwks)); // Express
+export const GET = jwksRoute(jwks); // Next.js: app/.well-known/jwks.json/route.ts
+```
+
+- Only public parameters are published, with `kid`, `alg` and `use: "sig"`. HS keys are skipped, since publishing them would publish the secret.
+- Every published key needs a `kid`. Public keys must be extractable: `importSPKI(pem, alg, { extractable: true })`.
+- The response has `Cache-Control: public, max-age=300`. When rotating, publish the new key, wait for caches to pick it up, and only then sign with it (`signingKid`). Keep the old key published until its last token has expired.
+- In NestJS, return the set from a `@ToklynPublic()` controller method with `@Header('Cache-Control', 'public, max-age=300')`.
+- For any other framework, `jwksResponse(jwks)` from `toklyn/http` returns the status, headers and body.
+
+### Verifying on other services
+
+`RemoteJwksAccessTokenVerifier` verifies tokens against a published JWKS:
+
+```ts
+import { RemoteJwksAccessTokenVerifier } from 'toklyn';
+
+const verifier = new RemoteJwksAccessTokenVerifier({
+  url: 'https://auth.example.com/.well-known/jwks.json',
+  algorithms: ['ES256'],
+  issuer: 'https://auth.example.com',
+  audience: 'https://api.example.com',
+});
+```
+
+| Option                  | Default  | Description                                                    |
+| ----------------------- | -------- | -------------------------------------------------------------- |
+| `url`                   | required | `https`, or `http` on `localhost` only                         |
+| `algorithms`            | required | Accepted asymmetric algorithms; the token header never chooses |
+| `issuer`, `audience`    | none     | Checks `iss` and `aud`                                         |
+| `clockToleranceSeconds` | `0`      | Allowed clock skew when checking `exp`                         |
+| `timeoutMs`             | `5000`   | Fetch timeout                                                  |
+| `cooldownMs`            | `30000`  | Minimum time between refetches caused by an unknown `kid`      |
+| `cacheMaxAgeMs`         | `600000` | Keys are refetched when older than this                        |
+| `fetch`                 | global   | Custom `fetch`, for example to go through a proxy              |
+
+- Keys are fetched on first use and cached. A token with an unknown `kid` triggers a refetch, at most once per cooldown, so key rotation needs no restart.
+- A JWKS that cannot be fetched or parsed gives `storage_error` (HTTP `503`); a bad token gives `invalid_access_token` (HTTP `401`).
+- Checks are offline: signature, algorithm, issuer, audience and expiry. A revoked session's access tokens keep working until they expire, so keep them short-lived.
+
+Services that only verify tokens have no session store, so they use the verify-only guards instead of `Auth`. They accept Bearer tokens only:
+
+```ts
+// Express
+const api = createToklynExpressResource(verifier);
+app.get('/api/me', api.requireAuth, (req, res) => res.json(getAuth(req)));
+
+// NestJS
+ToklynModule.forResource({ verifier }); // ToklynAuthGuard, @ToklynClaims() and @ToklynOptional() work as usual
+
+// Next.js
+const api = createToklynNextResource(verifier);
+export const GET = api.withAuth((request, { claims }) => Response.json(claims));
+
+// Any other framework
+const resource = createToklynResource(verifier); // from 'toklyn/http': authenticate, authenticateOptional
+```
 
 ## HTTP integration
 

@@ -1,7 +1,7 @@
 import { HttpException, Inject, Injectable } from '@nestjs/common';
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { HttpAdapterHost, Reflector } from '@nestjs/core';
-import type { OptionalAuthOptions, ToklynHttp } from 'toklyn/http';
+import type { OptionalAuthOptions, ToklynAuthenticator } from 'toklyn/http';
 import {
   TOKLYN_HTTP,
   TOKLYN_OPTIONAL,
@@ -21,7 +21,7 @@ import type { NodeStyleRequest } from './internal.js';
 export class ToklynAuthGuard implements CanActivate {
   constructor(
     @Inject(Reflector) private readonly reflector: Reflector,
-    @Inject(TOKLYN_HTTP) private readonly http: ToklynHttp,
+    @Inject(TOKLYN_HTTP) private readonly http: ToklynAuthenticator,
     @Inject(HttpAdapterHost) private readonly adapterHost: HttpAdapterHost,
   ) {}
 

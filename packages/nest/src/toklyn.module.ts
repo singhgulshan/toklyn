@@ -5,9 +5,9 @@ import type {
   ModuleMetadata,
   Provider,
 } from '@nestjs/common';
-import type { Auth, ClaimsShape } from 'toklyn';
-import { createToklynHttp } from 'toklyn/http';
-import type { ToklynHttpOptions } from 'toklyn/http';
+import type { AccessTokenVerifier, Auth, ClaimsShape } from 'toklyn';
+import { createToklynHttp, createToklynResource } from 'toklyn/http';
+import type { ToklynHttpOptions, ToklynResourceOptions } from 'toklyn/http';
 import { ToklynAuthGuard } from './auth.guard.js';
 import { TOKLYN_HTTP } from './internal.js';
 import { ToklynSessionService } from './session.service.js';
@@ -27,13 +27,27 @@ export interface ToklynModuleAsyncOptions {
   ) => ToklynModuleOptions | Promise<ToklynModuleOptions>;
 }
 
+export interface ToklynResourceModuleOptions extends ToklynResourceOptions {
+  verifier: AccessTokenVerifier;
+}
+
+export interface ToklynResourceModuleAsyncOptions {
+  imports?: ModuleMetadata['imports'];
+  inject?: FactoryProvider['inject'];
+  useFactory: (
+    ...args: never[]
+  ) => ToklynResourceModuleOptions | Promise<ToklynResourceModuleOptions>;
+}
+
 /** Global module: register once in the root module. */
 @Module({})
 export class ToklynModule {
   static forRoot(options: ToklynModuleOptions): DynamicModule {
-    return toklynModule([
-      { provide: TOKLYN_HTTP, useValue: createHttp(options) },
-    ]);
+    return toklynModule(
+      [{ provide: TOKLYN_HTTP, useValue: createHttp(options) }],
+      [],
+      true,
+    );
   }
 
   static forRootAsync(options: ToklynModuleAsyncOptions): DynamicModule {
@@ -50,23 +64,64 @@ export class ToklynModule {
         },
       ],
       options.imports,
+      true,
+    );
+  }
+
+  /**
+   * For a service that only verifies tokens, e.g. with a `RemoteJwksAccessTokenVerifier`.
+   * Provides `ToklynAuthGuard` (Bearer tokens only), not `ToklynSessionService`.
+   */
+  static forResource(options: ToklynResourceModuleOptions): DynamicModule {
+    return toklynModule(
+      [{ provide: TOKLYN_HTTP, useValue: createResource(options) }],
+      [],
+      false,
+    );
+  }
+
+  static forResourceAsync(
+    options: ToklynResourceModuleAsyncOptions,
+  ): DynamicModule {
+    const factory = options.useFactory as (
+      ...args: unknown[]
+    ) => ToklynResourceModuleOptions | Promise<ToklynResourceModuleOptions>;
+    return toklynModule(
+      [
+        {
+          provide: TOKLYN_HTTP,
+          inject: options.inject ?? [],
+          useFactory: async (...args: unknown[]) =>
+            createResource(await factory(...args)),
+        },
+      ],
+      options.imports,
+      false,
     );
   }
 }
 
 function toklynModule(
   providers: Provider[],
-  imports: ModuleMetadata['imports'] = [],
+  imports: ModuleMetadata['imports'] | undefined,
+  sessions: boolean,
 ): DynamicModule {
+  const shared = sessions
+    ? [ToklynAuthGuard, ToklynSessionService]
+    : [ToklynAuthGuard];
   return {
     module: ToklynModule,
     global: true,
-    imports,
-    providers: [...providers, ToklynAuthGuard, ToklynSessionService],
-    exports: [TOKLYN_HTTP, ToklynAuthGuard, ToklynSessionService],
+    imports: imports ?? [],
+    providers: [...providers, ...shared],
+    exports: [TOKLYN_HTTP, ...shared],
   };
 }
 
 function createHttp({ auth, ...options }: ToklynModuleOptions) {
   return createToklynHttp(auth, options);
+}
+
+function createResource({ verifier, ...options }: ToklynResourceModuleOptions) {
+  return createToklynResource(verifier, options);
 }
