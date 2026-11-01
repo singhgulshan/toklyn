@@ -73,6 +73,24 @@ Returns the verified claims of the current request. Throws if `requireAuth` did 
 
 Returns the claims, or `null` for a guest. Throws if neither `optionalAuth` nor `requireAuth` ran on the route.
 
+### `jwksHandler(jwks)`
+
+Mount on `GET /.well-known/jwks.json` to publish the set from `createJwks`. See [Publishing keys](https://github.com/singhgulshan/toklyn#publishing-keys-jwks).
+
+### `createToklynExpressResource(verifier, options?)`
+
+For services that only verify tokens, for example with a `RemoteJwksAccessTokenVerifier`. Returns `requireAuth` and `optionalAuth(options?)` for Bearer tokens; `getAuth` and `getOptionalAuth` work as usual. `options.clock` sets the time tokens are checked against.
+
+```ts
+const api = createToklynExpressResource(
+  new RemoteJwksAccessTokenVerifier({
+    url: 'https://auth.example.com/.well-known/jwks.json',
+    algorithms: ['ES256'],
+  }),
+);
+app.get('/api/me', api.requireAuth, (req, res) => res.json(getAuth(req)));
+```
+
 ## Links
 
 - [Full documentation](https://github.com/singhgulshan/toklyn#readme)

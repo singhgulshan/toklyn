@@ -5,11 +5,19 @@ import {
   JwtAccessTokenSigner,
   JwtAccessTokenVerifier,
   MemorySessionStore,
+  RemoteJwksAccessTokenVerifier,
   createAuth,
+  createJwks,
 } from 'toklyn';
 import type { ToklynHttpOptions } from 'toklyn/http';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createToklynExpress, getAuth, getOptionalAuth } from '#src/index.js';
+import {
+  createToklynExpress,
+  createToklynExpressResource,
+  getAuth,
+  getOptionalAuth,
+  jwksHandler,
+} from '#src/index.js';
 
 const ORIGIN = 'https://app.example.com';
 const COOKIE = '__Host-toklyn_refresh';
@@ -262,5 +270,113 @@ describe('@toklyn/express', () => {
     expect(await response.json()).toEqual({
       error: 'getAuth() needs requireAuth to run first on this route',
     });
+  });
+});
+
+async function listen(app: express.Express): Promise<string> {
+  const server = app.listen(0);
+  servers.push(server);
+  await new Promise((resolve) => server.once('listening', resolve));
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+}
+
+describe('@toklyn/express with JWKS', () => {
+  async function startPair() {
+    const { privateKey, publicKey } = (await crypto.subtle.generateKey(
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      true,
+      ['sign', 'verify'],
+    )) as CryptoKeyPair;
+    const keys = {
+      keys: [{ kid: 'k1', algorithm: 'ES256' as const, privateKey, publicKey }],
+    };
+    const auth = createAuth<{ role: string }>({
+      signer: new JwtAccessTokenSigner(keys),
+      verifier: new JwtAccessTokenVerifier(keys),
+      sessions: new MemorySessionStore(),
+      accessTokenTtlSeconds: 900,
+      refreshTokenTtlSeconds: 3600,
+      sessionMaxAgeSeconds: 86_400,
+    });
+
+    const authApp = express();
+    authApp.get(
+      '/.well-known/jwks.json',
+      jwksHandler(await createJwks(keys.keys)),
+    );
+    const authBase = await listen(authApp);
+
+    const resource = createToklynExpressResource(
+      new RemoteJwksAccessTokenVerifier({
+        url: `${authBase}/.well-known/jwks.json`,
+        algorithms: ['ES256'],
+      }),
+    );
+    const api = express();
+    api.get('/me', resource.requireAuth, (req, res) => {
+      const { sub, role } = getAuth<{ role: string }>(req);
+      res.json({ sub, role });
+    });
+    api.get('/feed', resource.optionalAuth(), (req, res) => {
+      res.json({ sub: getOptionalAuth(req)?.sub ?? null });
+    });
+    const apiBase = await listen(api);
+
+    return { auth, authBase, apiBase };
+  }
+
+  it('serves the public keys with a cache header', async () => {
+    const { authBase } = await startPair();
+    const response = await fetch(`${authBase}/.well-known/jwks.json`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('public, max-age=300');
+    const body = (await response.json()) as { keys: object[] };
+    expect(body.keys).toEqual([
+      expect.objectContaining({ kid: 'k1', alg: 'ES256', kty: 'EC' }),
+    ]);
+    expect(body.keys[0]).not.toHaveProperty('d');
+  });
+
+  it('verifies tokens on another service through the JWKS', async () => {
+    const { auth, apiBase } = await startPair();
+    const { accessToken } = await auth.createSession({
+      subject: 'u1',
+      claims: { role: 'admin' },
+    });
+
+    const me = await fetch(`${apiBase}/me`, {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(await me.json()).toEqual({ sub: 'u1', role: 'admin' });
+
+    const anonymous = await fetch(`${apiBase}/me`);
+    expect(anonymous.status).toBe(401);
+    expect(anonymous.headers.get('www-authenticate')).toBe('Bearer');
+    expect(await (await fetch(`${apiBase}/feed`)).json()).toEqual({
+      sub: null,
+    });
+  });
+
+  it('answers 503 when the JWKS is unreachable', async () => {
+    const api = express();
+    const resource = createToklynExpressResource(
+      new RemoteJwksAccessTokenVerifier({
+        url: 'http://127.0.0.1:1/.well-known/jwks.json',
+        algorithms: ['ES256'],
+      }),
+    );
+    api.get('/me', resource.requireAuth, (_req, res) => {
+      res.json({});
+    });
+    const apiBase = await listen(api);
+    const part = (value: object) =>
+      Buffer.from(JSON.stringify(value)).toString('base64url');
+    const token = `${part({ alg: 'ES256', kid: 'k1' })}.${part({ sub: 'u1' })}.c2ln`;
+
+    const response = await fetch(`${apiBase}/me`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.status).toBe(503);
   });
 });

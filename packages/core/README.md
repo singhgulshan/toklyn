@@ -48,18 +48,19 @@ await auth.revokeSession(claims.sid);
 
 ## Entry points
 
-| Import              | Contents                                                                                                                                  |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `toklyn`            | `createAuth`, `accessTokensFromEnv`, JWT signer and verifier, in-memory stores, `ToklynError`, types and store contracts                  |
-| `toklyn/http`       | `createToklynHttp`: framework-neutral login, refresh, logout and authentication responses, in bearer or cookie mode; `httpOptionsFromEnv` |
-| `toklyn/testing`    | `sessionStoreContract` and `revocationStoreContract`, Vitest suites for custom stores                                                     |
-| `toklyn/test-utils` | `createTestAuth` and `createTestClock` for testing your app with any test runner                                                          |
+| Import              | Contents                                                                                                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `toklyn`            | `createAuth`, `accessTokensFromEnv`, JWT signer and verifier, `createJwks` and `RemoteJwksAccessTokenVerifier`, in-memory stores, `ToklynError`, types and store contracts                       |
+| `toklyn/http`       | `createToklynHttp`: framework-neutral login, refresh, logout and authentication responses, in bearer or cookie mode; `httpOptionsFromEnv`; verify-only `createToklynResource` and `jwksResponse` |
+| `toklyn/testing`    | `sessionStoreContract` and `revocationStoreContract`, Vitest suites for custom stores                                                                                                            |
+| `toklyn/test-utils` | `createTestAuth` and `createTestClock` for testing your app with any test runner                                                                                                                 |
 
 ## Documentation
 
 - [How it works](https://github.com/singhgulshan/toklyn#how-it-works)
 - [Configuration](https://github.com/singhgulshan/toklyn#configuration)
 - [Signing keys and key rotation](https://github.com/singhgulshan/toklyn#signing-keys)
+- [Publishing keys (JWKS)](https://github.com/singhgulshan/toklyn#publishing-keys-jwks) and [verifying on other services](https://github.com/singhgulshan/toklyn#verifying-on-other-services)
 - [HTTP integration: bearer and cookie mode](https://github.com/singhgulshan/toklyn#http-integration)
 - [Storage and custom stores](https://github.com/singhgulshan/toklyn#storage)
 - [Testing your app](https://github.com/singhgulshan/toklyn#testing-your-app)

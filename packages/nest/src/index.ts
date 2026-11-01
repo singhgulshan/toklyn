@@ -6,4 +6,6 @@ export { ToklynModule } from './toklyn.module.js';
 export type {
   ToklynModuleAsyncOptions,
   ToklynModuleOptions,
+  ToklynResourceModuleAsyncOptions,
+  ToklynResourceModuleOptions,
 } from './toklyn.module.js';

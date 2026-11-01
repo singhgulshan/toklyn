@@ -98,17 +98,30 @@ export class AuthController {
 
 Use `ToklynModule.forRootAsync({ imports, inject, useFactory })` when `auth` comes from another provider; see the [example module](https://github.com/singhgulshan/toklyn/blob/main/examples/nest/src/app.module.ts).
 
+To publish your public keys ([JWKS](https://github.com/singhgulshan/toklyn#publishing-keys-jwks)), return the set from `createJwks` in a public route:
+
+```ts
+@ToklynPublic()
+@Get('.well-known/jwks.json')
+@Header('Cache-Control', 'public, max-age=300')
+jwks() {
+  return this.jwks;
+}
+```
+
 ## API
 
-| Export                                                         | Description                                                                                                                                         |
-| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ToklynModule.forRoot({ auth, ...httpOptions })`               | Global module. `httpOptions` are the [HTTP options](https://github.com/singhgulshan/toklyn#http-options) of `toklyn/http`                           |
-| `ToklynModule.forRootAsync({ imports?, inject?, useFactory })` | Same, with options from a factory                                                                                                                   |
-| `ToklynAuthGuard`                                              | Requires a valid access token. Use with `@UseGuards()` or as `APP_GUARD`. Non-HTTP contexts are denied                                              |
-| `@ToklynPublic()`                                              | Skips the guard for a route or controller                                                                                                           |
-| `@ToklynOptional(options?)`                                    | Lets guests through the guard. `{ invalidToken: 'ignore' }` also treats invalid tokens as guests; the default answers `401`. `@ToklynPublic()` wins |
-| `@ToklynClaims()`                                              | Injects the verified claims, or `null` for a guest on a `@ToklynOptional()` route. Throws if the guard did not run                                  |
-| `ToklynSessionService`                                         | `sendSession(res, tokens)`, `refresh(req, res)`, `logout(req, res)`                                                                                 |
+| Export                                                             | Description                                                                                                                                              |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ToklynModule.forRoot({ auth, ...httpOptions })`                   | Global module. `httpOptions` are the [HTTP options](https://github.com/singhgulshan/toklyn#http-options) of `toklyn/http`                                |
+| `ToklynModule.forRootAsync({ imports?, inject?, useFactory })`     | Same, with options from a factory                                                                                                                        |
+| `ToklynModule.forResource({ verifier, clock? })`                   | For services that only verify tokens, e.g. with a `RemoteJwksAccessTokenVerifier`. Bearer tokens only; provides the guard but not `ToklynSessionService` |
+| `ToklynModule.forResourceAsync({ imports?, inject?, useFactory })` | Same, with options from a factory                                                                                                                        |
+| `ToklynAuthGuard`                                                  | Requires a valid access token. Use with `@UseGuards()` or as `APP_GUARD`. Non-HTTP contexts are denied                                                   |
+| `@ToklynPublic()`                                                  | Skips the guard for a route or controller                                                                                                                |
+| `@ToklynOptional(options?)`                                        | Lets guests through the guard. `{ invalidToken: 'ignore' }` also treats invalid tokens as guests; the default answers `401`. `@ToklynPublic()` wins      |
+| `@ToklynClaims()`                                                  | Injects the verified claims, or `null` for a guest on a `@ToklynOptional()` route. Throws if the guard did not run                                       |
+| `ToklynSessionService`                                             | `sendSession(res, tokens)`, `refresh(req, res)`, `logout(req, res)`                                                                                      |
 
 ## Links
 

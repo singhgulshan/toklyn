@@ -18,7 +18,9 @@ import {
   JwtAccessTokenSigner,
   JwtAccessTokenVerifier,
   MemorySessionStore,
+  RemoteJwksAccessTokenVerifier,
   createAuth,
+  createJwks,
 } from 'toklyn';
 import type { AccessTokenClaims, Auth } from 'toklyn';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -202,6 +204,64 @@ const cookieAuth = makeAuth(10_000);
   providers: [{ provide: APP_GUARD, useClass: ToklynAuthGuard }],
 })
 class CookieModeModule {}
+
+const esKeys = crypto.subtle
+  .generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
+  .then((pair) => [
+    { kid: 'k1', algorithm: 'ES256' as const, ...(pair as CryptoKeyPair) },
+  ]);
+
+async function signWithEsKey(subject: string): Promise<string> {
+  const keys = await esKeys;
+  const auth = createAuth<Claims>({
+    signer: new JwtAccessTokenSigner({ keys }),
+    verifier: new JwtAccessTokenVerifier({ keys }),
+    sessions: new MemorySessionStore(),
+    accessTokenTtlSeconds: 900,
+    refreshTokenTtlSeconds: 3600,
+    sessionMaxAgeSeconds: 86_400,
+  });
+  const tokens = await auth.createSession({
+    subject,
+    claims: { role: 'reader' },
+  });
+  return tokens.accessToken;
+}
+
+@Controller()
+class ResourceController {
+  @Get('me')
+  me(@ToklynClaims() claims: AccessTokenClaims<Claims>) {
+    return { sub: claims.sub, role: claims.role };
+  }
+
+  @ToklynOptional()
+  @Get('feed')
+  feed(@ToklynClaims() claims: AccessTokenClaims | null) {
+    return { sub: claims?.sub ?? null };
+  }
+}
+
+/** A service that only verifies tokens published by another service's JWKS. */
+@Module({
+  imports: [
+    ToklynModule.forResourceAsync({
+      useFactory: async () => {
+        const jwks = await createJwks(await esKeys);
+        return {
+          verifier: new RemoteJwksAccessTokenVerifier({
+            url: 'https://auth.example.com/.well-known/jwks.json',
+            algorithms: ['ES256'],
+            fetch: async () => Response.json(jwks),
+          }),
+        };
+      },
+    }),
+  ],
+  controllers: [ResourceController],
+  providers: [{ provide: APP_GUARD, useClass: ToklynAuthGuard }],
+})
+class ResourceModule {}
 
 const apps: INestApplication[] = [];
 afterEach(async () => {
@@ -403,6 +463,23 @@ describe.each(Object.entries(platforms))('@toklyn/nest on %s', (_, adapter) => {
     expect(await guarded.json()).toEqual({ sub: 'u2' });
     expect(denied.status).toBe(401);
     expect(free.status).toBe(200);
+  });
+
+  it('verifies tokens from a JWKS with forResourceAsync', async () => {
+    const { app, call } = await start(ResourceModule);
+    const accessToken = await signWithEsKey('u3');
+
+    const me = await call('/me', {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    const anonymous = await call('/me');
+    const guest = await call('/feed');
+
+    expect(await me.json()).toEqual({ sub: 'u3', role: 'reader' });
+    expect(anonymous.status).toBe(401);
+    expect(anonymous.headers.get('www-authenticate')).toBe('Bearer');
+    expect(await guest.json()).toEqual({ sub: null });
+    expect(() => app.get(ToklynSessionService)).toThrow();
   });
 });
 
