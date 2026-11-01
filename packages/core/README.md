@@ -22,31 +22,15 @@ Node.js 22.12 or later, or any runtime with Web Crypto. ESM and CommonJS.
 ## Usage
 
 ```ts
-import {
-  JwtAccessTokenSigner,
-  JwtAccessTokenVerifier,
-  MemorySessionStore,
-  createAuth,
-} from 'toklyn';
+import { MemorySessionStore, accessTokensFromEnv, createAuth } from 'toklyn';
 
 interface AppClaims {
   role: string;
 }
 
-// Generate once with `openssl rand -base64 32`.
-const keyConfig = {
-  keys: [
-    {
-      kid: 'k1',
-      algorithm: 'HS256' as const,
-      secret: Buffer.from(process.env.ACCESS_TOKEN_SECRET ?? '', 'base64'),
-    },
-  ],
-};
-
 const auth = createAuth<AppClaims>({
-  signer: new JwtAccessTokenSigner(keyConfig),
-  verifier: new JwtAccessTokenVerifier(keyConfig),
+  // HS256 from TOKLYN_SECRET (at least 32 bytes; generate with `openssl rand -base64 32`).
+  ...accessTokensFromEnv(),
   sessions: new MemorySessionStore(),
   accessTokenTtlSeconds: 5 * 60,
   refreshTokenTtlSeconds: 7 * 24 * 60 * 60,
@@ -64,11 +48,12 @@ await auth.revokeSession(claims.sid);
 
 ## Entry points
 
-| Import           | Contents                                                                                                            |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `toklyn`         | `createAuth`, JWT signer and verifier, in-memory stores, `ToklynError`, types and store contracts                   |
-| `toklyn/http`    | `createToklynHttp`: framework-neutral login, refresh, logout and authentication responses, in bearer or cookie mode |
-| `toklyn/testing` | `sessionStoreContract` and `revocationStoreContract`, Vitest suites for custom stores                               |
+| Import              | Contents                                                                                                                                  |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `toklyn`            | `createAuth`, `accessTokensFromEnv`, JWT signer and verifier, in-memory stores, `ToklynError`, types and store contracts                  |
+| `toklyn/http`       | `createToklynHttp`: framework-neutral login, refresh, logout and authentication responses, in bearer or cookie mode; `httpOptionsFromEnv` |
+| `toklyn/testing`    | `sessionStoreContract` and `revocationStoreContract`, Vitest suites for custom stores                                                     |
+| `toklyn/test-utils` | `createTestAuth` and `createTestClock` for testing your app with any test runner                                                          |
 
 ## Documentation
 
@@ -77,6 +62,7 @@ await auth.revokeSession(claims.sid);
 - [Signing keys and key rotation](https://github.com/singhgulshan/toklyn#signing-keys)
 - [HTTP integration: bearer and cookie mode](https://github.com/singhgulshan/toklyn#http-integration)
 - [Storage and custom stores](https://github.com/singhgulshan/toklyn#storage)
+- [Testing your app](https://github.com/singhgulshan/toklyn#testing-your-app)
 - [Errors](https://github.com/singhgulshan/toklyn#errors)
 - [Security model](https://github.com/singhgulshan/toklyn#security-model)
 

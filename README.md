@@ -22,6 +22,7 @@ toklyn issues short-lived JWT access tokens and long-lived opaque refresh tokens
 - [HTTP integration](#http-integration)
 - [Frameworks](#frameworks)
 - [Storage](#storage)
+- [Testing your app](#testing-your-app)
 - [Errors](#errors)
 - [Events](#events)
 - [Security model](#security-model)
@@ -43,6 +44,7 @@ toklyn issues short-lived JWT access tokens and long-lived opaque refresh tokens
 
 ## Packages
 
+<<<<<<< Updated upstream
 | Package                               | Description                                                                                                               | Version                                                                                                      |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | [`toklyn`](packages/core)             | Core: sessions, tokens, stores, plus `toklyn/http` and `toklyn/testing`                                                   | [![npm](https://img.shields.io/npm/v/toklyn?label=)](https://www.npmjs.com/package/toklyn)                   |
@@ -50,6 +52,15 @@ toklyn issues short-lived JWT access tokens and long-lived opaque refresh tokens
 | [`@toklyn/nest`](packages/nest)       | NestJS module, guard and decorators                                                                                       | [![npm](https://img.shields.io/npm/v/@toklyn/nest?label=)](https://www.npmjs.com/package/@toklyn/nest)       |
 | [`@toklyn/next`](packages/next)       | Next.js App Router route handlers, proxy and server-component helpers                                                     | [![npm](https://img.shields.io/npm/v/@toklyn/next?label=)](https://www.npmjs.com/package/@toklyn/next)       |
 | [`@toklyn/store`](packages/store)     | PostgreSQL (`/postgres`), MySQL/MariaDB (`/mysql`), SQLite (`/sqlite`) and Redis (`/redis`) session and revocation stores | [![npm](https://img.shields.io/npm/v/@toklyn/store?label=)](https://www.npmjs.com/package/@toklyn/store)     |
+=======
+| Package                               | Description                                                                                                                                     | Version                                                                                                      |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| [`toklyn`](packages/core)             | Core: sessions, tokens, stores, plus `toklyn/http`, `toklyn/testing` and `toklyn/test-utils`                                                    | [![npm](https://img.shields.io/npm/v/toklyn?label=)](https://www.npmjs.com/package/toklyn)                   |
+| [`@toklyn/express`](packages/express) | Express 5 middleware and route handlers                                                                                                         | [![npm](https://img.shields.io/npm/v/@toklyn/express?label=)](https://www.npmjs.com/package/@toklyn/express) |
+| [`@toklyn/nest`](packages/nest)       | NestJS module, guard and decorators                                                                                                             | [![npm](https://img.shields.io/npm/v/@toklyn/nest?label=)](https://www.npmjs.com/package/@toklyn/nest)       |
+| [`@toklyn/next`](packages/next)       | Next.js App Router route handlers, proxy and server-component helpers                                                                           | [![npm](https://img.shields.io/npm/v/@toklyn/next?label=)](https://www.npmjs.com/package/@toklyn/next)       |
+| [`@toklyn/store`](packages/store)     | PostgreSQL (`/postgres`), MySQL/MariaDB (`/mysql`), SQLite (`/sqlite`), MongoDB (`/mongodb`) and Redis (`/redis`) session and revocation stores | [![npm](https://img.shields.io/npm/v/@toklyn/store?label=)](https://www.npmjs.com/package/@toklyn/store)     |
+>>>>>>> Stashed changes
 
 All packages share one version number and are released together.
 
@@ -67,32 +78,20 @@ Requires Node.js 22.12 or later.
 
 ## Quick start
 
+```sh
+# .env (generate with `openssl rand -base64 32` and keep it in your secret manager)
+TOKLYN_SECRET=q7Vh3kZ1x9Lr2Yt0cWb8NfJmA4sPeD6uGiHoKjRlTzE=
+```
+
 ```ts
-import {
-  JwtAccessTokenSigner,
-  JwtAccessTokenVerifier,
-  MemorySessionStore,
-  createAuth,
-} from 'toklyn';
+import { MemorySessionStore, accessTokensFromEnv, createAuth } from 'toklyn';
 
 interface AppClaims {
   role: string;
 }
 
-// Generate once with `openssl rand -base64 32` and keep it in your secret manager.
-const keyConfig = {
-  keys: [
-    {
-      kid: 'k1',
-      algorithm: 'HS256' as const,
-      secret: Buffer.from(process.env.ACCESS_TOKEN_SECRET ?? '', 'base64'),
-    },
-  ],
-};
-
 const auth = createAuth<AppClaims>({
-  signer: new JwtAccessTokenSigner(keyConfig),
-  verifier: new JwtAccessTokenVerifier(keyConfig),
+  ...accessTokensFromEnv(), // HS256 signer and verifier from TOKLYN_SECRET
   sessions: new MemorySessionStore(),
   accessTokenTtlSeconds: 5 * 60,
   refreshTokenTtlSeconds: 7 * 24 * 60 * 60,
@@ -118,7 +117,7 @@ const rotated = await auth.refresh({ refreshToken: tokens.refreshToken });
 await auth.revokeSession(claims.sid);
 ```
 
-A secret shorter than 32 bytes throws at startup, so a missing environment variable fails fast instead of signing with a weak key.
+A missing secret or one shorter than 32 bytes throws at startup, so a misconfigured deploy fails fast instead of signing with a weak key. To pass keys in code or use asymmetric keys, see [Signing keys](#signing-keys).
 
 In a web app you rarely call `refresh` yourself: the [HTTP layer](#http-integration) and the [framework adapters](#frameworks) handle cookies, refresh and logout routes for you.
 
@@ -179,21 +178,21 @@ The hook runs before the refresh token is consumed. If it throws, the refresh fa
 
 `createAuth<TClaims>(config)` returns an [`Auth`](packages/core/src/auth.ts) object.
 
-| Option                   | Type                                       | Default      | Description                                                       |
-| ------------------------ | ------------------------------------------ | ------------ | ----------------------------------------------------------------- |
-| `signer`                 | `AccessTokenSigner`                        | required     | Usually `new JwtAccessTokenSigner(keyConfig)`                     |
-| `verifier`               | `AccessTokenVerifier`                      | required     | Usually `new JwtAccessTokenVerifier(keyConfig)`                   |
-| `sessions`               | `SessionStore`                             | required     | See [Storage](#storage)                                           |
-| `accessTokenTtlSeconds`  | `number`                                   | required     | Access token lifetime                                             |
-| `refreshTokenTtlSeconds` | `number`                                   | required     | Lifetime of each refresh token (sliding)                          |
-| `sessionMaxAgeSeconds`   | `number`                                   | required     | Absolute session lifetime from creation                           |
-| `verification`           | `'offline' \| 'online'`                    | `'offline'`  | See [Verification modes](#verification-modes)                     |
-| `revocations`            | `AccessTokenRevocationStore`               | none         | Denylist for single access tokens; needed by `revokeAccessToken`  |
-| `reuseGraceMs`           | `number`                                   | `0`          | Grace window for reusing a just-rotated refresh token             |
-| `onRefresh`              | `(session) => claims \| null \| undefined` | none         | See [Checking the user on refresh](#checking-the-user-on-refresh) |
-| `onEvent`                | `(event: AuthEvent) => void`               | none         | See [Events](#events)                                             |
-| `refreshTokens`          | `RefreshTokenCodec`                        | Web Crypto   | Custom refresh-token generation and hashing                       |
-| `clock`                  | `Clock`                                    | system clock | Inject time in tests                                              |
+| Option                   | Type                                       | Default      | Description                                                             |
+| ------------------------ | ------------------------------------------ | ------------ | ----------------------------------------------------------------------- |
+| `signer`                 | `AccessTokenSigner`                        | required     | From `accessTokensFromEnv()` or `new JwtAccessTokenSigner(keyConfig)`   |
+| `verifier`               | `AccessTokenVerifier`                      | required     | From `accessTokensFromEnv()` or `new JwtAccessTokenVerifier(keyConfig)` |
+| `sessions`               | `SessionStore`                             | required     | See [Storage](#storage)                                                 |
+| `accessTokenTtlSeconds`  | `number`                                   | required     | Access token lifetime                                                   |
+| `refreshTokenTtlSeconds` | `number`                                   | required     | Lifetime of each refresh token (sliding)                                |
+| `sessionMaxAgeSeconds`   | `number`                                   | required     | Absolute session lifetime from creation                                 |
+| `verification`           | `'offline' \| 'online'`                    | `'offline'`  | See [Verification modes](#verification-modes)                           |
+| `revocations`            | `AccessTokenRevocationStore`               | none         | Denylist for single access tokens; needed by `revokeAccessToken`        |
+| `reuseGraceMs`           | `number`                                   | `0`          | Grace window for reusing a just-rotated refresh token                   |
+| `onRefresh`              | `(session) => claims \| null \| undefined` | none         | See [Checking the user on refresh](#checking-the-user-on-refresh)       |
+| `onEvent`                | `(event: AuthEvent) => void`               | none         | See [Events](#events)                                                   |
+| `refreshTokens`          | `RefreshTokenCodec`                        | Web Crypto   | Custom refresh-token generation and hashing                             |
+| `clock`                  | `Clock`                                    | system clock | Inject time in tests                                                    |
 
 | Method                                           | Description                                                                                           |
 | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
@@ -210,6 +209,25 @@ The hook runs before the refresh token is consumed. If it throws, the refresh fa
 ## Signing keys
 
 The algorithm always comes from your config, never from the token header ([RFC 8725 §3.1](https://www.rfc-editor.org/rfc/rfc8725#section-3.1)).
+
+### From environment variables
+
+`accessTokensFromEnv(options?)` returns an HS256 `signer` and `verifier` to spread into `createAuth`. Nothing reads the environment unless you call it.
+
+| Variable                 | Required | Description                                                                         |
+| ------------------------ | -------- | ----------------------------------------------------------------------------------- |
+| `TOKLYN_SECRET`          | yes      | Signing secret, at least 32 bytes. Any text; it is used as is, not base64-decoded   |
+| `TOKLYN_SECRET_PREVIOUS` | no       | Old secret, accepted for verification only, so rotating the secret signs nobody out |
+| `TOKLYN_ISSUER`          | no       | Sets and checks `iss`                                                               |
+| `TOKLYN_AUDIENCE`        | no       | Sets and checks `aud`; comma-separated for several                                  |
+
+- Generate the secret with `openssl rand -base64 32` (or `node -e "console.log(crypto.randomBytes(32).toString('base64'))"`). Prefer a generated value over a passphrase.
+- Each key gets a `kid` derived from a hash of its secret, so rotation needs no key names: move the current value to `TOKLYN_SECRET_PREVIOUS`, set a new `TOKLYN_SECRET`, and remove the previous one once the last old access token has expired.
+- A missing or short secret throws `invalid_config` at startup; the message never contains the value. Empty variables count as unset.
+- It reads `process.env` by default. On runtimes without it, such as Cloudflare Workers, pass the env object: `accessTokensFromEnv({ env })`.
+- Another service verifying these tokens must use the same text as the HMAC key, not its base64-decoded bytes.
+
+### In code
 
 **HMAC** (`HS256`, `HS384`, `HS512`): the secret must be at least as long as the hash output, so 32, 48 or 64 bytes ([RFC 7518 §3.2](https://www.rfc-editor.org/rfc/rfc7518#section-3.2)).
 
@@ -320,6 +338,15 @@ Storage errors in `online` mode always give `503`. The adapters expose it as `op
 | `sameSite`      | see above | `'Strict'`, `'Lax'` or `'None'`; `'None'` requires `secure` and a non-empty `allowedOrigins`                      |
 
 Every option is validated when you call `createToklynHttp`; an invalid value throws `invalid_config`.
+
+`httpOptionsFromEnv(options?, { env? })` from `toklyn/http` adds `TOKLYN_ALLOWED_ORIGINS` (comma-separated) and `TOKLYN_COOKIE_DOMAIN` (both cookies) to your options. Values you set in code win. Setting a domain changes the cookie prefix from `__Host-` to `__Secure-`, which signs out existing sessions.
+
+```ts
+const http = createToklynHttp(
+  auth,
+  httpOptionsFromEnv({ accessToken: 'cookie' }),
+);
+```
 
 **Trusted origin** means the browser sent `Sec-Fetch-Site: same-origin`, or an `Origin` listed in `allowedOrigins`. Requests with neither header are rejected. The refresh and logout routes always require it, so non-browser clients must send an allowed `Origin`.
 
@@ -445,6 +472,27 @@ revocationStoreContract(
   (clock) => new DynamoRevocations(table, clock),
 );
 ```
+
+## Testing your app
+
+`toklyn/test-utils` works with any test runner (Vitest, Jest, `node:test`). `createTestAuth(options?)` returns an `auth` with a random HS256 key, in-memory stores and a clock that only moves when you tell it to:
+
+```ts
+import { createTestAuth } from 'toklyn/test-utils';
+
+const { auth, clock, sessions } = createTestAuth<{ role: string }>({
+  accessTokenTtlSeconds: 60,
+});
+const tokens = await auth.createSession({
+  subject: 'user-1',
+  claims: { role: 'admin' },
+});
+
+clock.advance(61_000);
+await auth.verifyAccessToken(tokens.accessToken); // throws access_token_expired
+```
+
+Every `createAuth` option can be overridden except `clock`; `startAt` sets the start time. `createTestClock(startAt?)` is exported too. Never use it in production: the key changes on every call and sessions live in memory.
 
 ## Errors
 
