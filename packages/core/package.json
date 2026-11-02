@@ -1,6 +1,6 @@
 {
   "name": "toklyn",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "license": "MIT",
   "description": "Access and refresh token sessions with rotation, reuse detection and pluggable storage.",
   "keywords": [
