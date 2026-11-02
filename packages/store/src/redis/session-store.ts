@@ -5,6 +5,7 @@ import type {
   RotateResult,
   Session,
   SessionStore,
+  TokenWithSession,
 } from 'toklyn';
 import type { RedisClient } from '#src/redis/client.js';
 import {
@@ -17,6 +18,7 @@ import {
 import {
   ACTIVE_FOR_SUBJECT,
   CREATE_SESSION,
+  FIND_BY_TOKEN,
   FIND_SESSION,
   REVOKE_SESSION,
   ROTATE,
@@ -80,6 +82,28 @@ export class RedisSessionStore implements SessionStore {
     return parseSession(
       await this.client.eval(FIND_SESSION, [this.sessionKey(sessionId)], []),
     );
+  }
+
+  async findByToken(hash: string): Promise<TokenWithSession | null> {
+    const reply = await this.client.eval(
+      FIND_BY_TOKEN,
+      [this.tokenKey(hash)],
+      [this.prefix],
+    );
+    if (reply === null || reply === undefined) return null;
+    if (!Array.isArray(reply)) throw malformed();
+    const [issuedAt, expiresAt, consumedAt, sessionReply] = reply as unknown[];
+    const session = this.requireSession(sessionReply);
+    return {
+      session,
+      refreshToken: {
+        hash,
+        sessionId: session.id,
+        issuedAt: parseTimestamp(issuedAt),
+        expiresAt: parseTimestamp(expiresAt),
+        consumedAt: consumedAt === '' ? null : parseTimestamp(consumedAt),
+      },
+    };
   }
 
   async rotate(input: RotateInput): Promise<RotateResult> {

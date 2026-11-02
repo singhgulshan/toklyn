@@ -26,6 +26,15 @@ export const FIND_SESSION = `
 return redis.call('HGETALL', KEYS[1])
 `;
 
+/** KEYS: token. ARGV: key prefix. Returns the token's issuedAt, expiresAt, consumedAt and session. */
+export const FIND_BY_TOKEN = `
+local t = redis.call('HMGET', KEYS[1], 'sessionId', 'issuedAt', 'expiresAt', 'consumedAt')
+if not t[1] then return false end
+local s = redis.call('HGETALL', ARGV[1] .. 's:' .. t[1])
+if #s == 0 then return false end
+return {t[2], t[3], t[4], s}
+`;
+
 /**
  * KEYS: presented token, new token.
  * ARGV: key prefix, now, refreshTtlMs, reuseGraceMs, has claims ('1'/'0'), claims.

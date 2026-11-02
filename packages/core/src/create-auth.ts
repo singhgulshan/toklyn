@@ -5,7 +5,11 @@ import type {
   RefreshInput,
 } from '#src/auth.js';
 import { systemClock } from '#src/clock.js';
-import type { Clock, RefreshTokenCodec } from '#src/contracts.js';
+import type {
+  Clock,
+  RefreshTokenCodec,
+  TokenWithSession,
+} from '#src/contracts.js';
 import { DefaultRefreshTokenCodec } from '#src/crypto/refresh-token-codec.js';
 import { ToklynError } from '#src/errors.js';
 import { RESERVED_CLAIMS } from '#src/types.js';
@@ -129,17 +133,22 @@ class AuthManager<TClaims extends ClaimsShape> implements Auth<TClaims> {
 
     const now = this.clock.now();
     const sessionId = sessionIdOf(presented);
+    const presentedHash = await this.codec.hash(presented);
     let claims = input.claims;
     if (this.config.onRefresh && sessionId !== null) {
-      const session = await guard(() => this.config.sessions.find(sessionId));
-      // Inactive sessions are left to rotate(), which reports why.
-      if (session && session.revokedAt === null && now < session.expiresAt) {
+      // Looked up by hash, so the hook runs only for the token's holder.
+      const found = await guard(() =>
+        this.config.sessions.findByToken(presentedHash),
+      );
+      // Unusable tokens are left to rotate(), which reports why.
+      if (found && found.session.id === sessionId && this.usable(found, now)) {
         claims =
-          (await this.decide(session as Session<TClaims>)) ?? input.claims;
+          (await this.decide(found.session as Session<TClaims>)) ??
+          input.claims;
       }
     }
 
-    const rotation = await this.rotate(presented, sessionId, now, claims);
+    const rotation = await this.rotate(presentedHash, sessionId, now, claims);
     let session = rotation.session;
     if (this.config.onRefresh && sessionId === null) {
       // Tokens issued by 0.1.0 carry no session id, so the hook can only run after rotating.
@@ -168,7 +177,7 @@ class AuthManager<TClaims extends ClaimsShape> implements Auth<TClaims> {
       assertRefreshTokenShape(refreshToken);
       // The store finds sessions by token hash only through rotate, which also proves possession.
       const rotation = await this.rotate(
-        refreshToken,
+        await this.codec.hash(refreshToken),
         sessionIdOf(refreshToken),
         this.clock.now(),
         undefined,
@@ -198,16 +207,25 @@ class AuthManager<TClaims extends ClaimsShape> implements Auth<TClaims> {
     return decision;
   }
 
+  /** Mirrors the checks `rotate` makes, without consuming anything. */
+  private usable({ session, refreshToken }: TokenWithSession, now: number) {
+    const { consumedAt } = refreshToken;
+    return (
+      session.revokedAt === null &&
+      now < session.expiresAt &&
+      now < refreshToken.expiresAt &&
+      (consumedAt === null ||
+        (this.reuseGraceMs > 0 && now - consumedAt <= this.reuseGraceMs))
+    );
+  }
+
   private async rotate(
-    presented: string,
+    presentedHash: string,
     sessionId: string | null,
     now: number,
     claims: TClaims | undefined,
   ): Promise<Rotation<TClaims>> {
-    const [presentedHash, next] = await Promise.all([
-      this.codec.hash(presented),
-      this.issueRefreshToken(sessionId),
-    ]);
+    const next = await this.issueRefreshToken(sessionId);
     const result = await guard(() =>
       this.config.sessions.rotate({
         presentedHash,

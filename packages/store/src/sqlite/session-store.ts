@@ -4,6 +4,7 @@ import type {
   RotateResult,
   Session,
   SessionStore,
+  TokenWithSession,
 } from 'toklyn';
 import { retryWhenBusy } from '#src/sqlite/busy.js';
 import type { SqliteClient, SqliteExecutor } from '#src/sqlite/client.js';
@@ -78,6 +79,24 @@ export class SqliteSessionStore implements SessionStore {
       this.client.all(this.sql.find, [sessionId]),
     );
     return row ? parseSession(row) : null;
+  }
+
+  async findByToken(hash: string): Promise<TokenWithSession | null> {
+    const [row] = await retryWhenBusy(() =>
+      this.client.all(this.sql.tokenWithSession, [hash]),
+    );
+    if (!row) return null;
+    const session = parseSession(row);
+    return {
+      session,
+      refreshToken: {
+        hash,
+        sessionId: session.id,
+        issuedAt: parseInteger(row['token_issued_at']),
+        expiresAt: parseInteger(row['token_expires_at']),
+        consumedAt: nullableInteger(row['token_consumed_at']),
+      },
+    };
   }
 
   async rotate(input: RotateInput): Promise<RotateResult> {
@@ -202,6 +221,7 @@ VALUES (?, ?, ${MS}, ${MS}, ${MS})`,
     find: `SELECT ${sessionColumns()} FROM ${sessions} WHERE id = ?`,
 
     tokenWithSession: `SELECT ${sessionColumns('s.')},
+  CAST(t.issued_at AS TEXT) AS token_issued_at,
   CAST(t.expires_at AS TEXT) AS token_expires_at,
   CAST(t.consumed_at AS TEXT) AS token_consumed_at
 FROM ${refreshTokens} t JOIN ${sessions} s ON s.id = t.session_id

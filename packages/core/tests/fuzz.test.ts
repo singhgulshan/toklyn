@@ -65,7 +65,13 @@ describe('property-based security checks', () => {
 
   describe('refresh tokens', () => {
     it('rejects arbitrary and session-prefixed guesses without touching the session', async () => {
-      const { auth } = createTestAuth();
+      let hookCalls = 0;
+      const { auth } = createTestAuth({
+        onRefresh: () => {
+          hookCalls += 1;
+          return null;
+        },
+      });
       const pair = await auth.createSession({ subject: 'user-1' });
       const guess = fc.oneof(
         fc.string({ maxLength: 256 }),
@@ -79,9 +85,8 @@ describe('property-based security checks', () => {
           );
         }),
       );
-      await expect(
-        auth.refresh({ refreshToken: pair.refreshToken }),
-      ).resolves.toMatchObject({ sessionId: pair.sessionId });
+      expect(hookCalls).toBe(0);
+      expect(await auth.listSessions('user-1')).toHaveLength(1);
     });
 
     it('rejects any single-character change to a valid token', async () => {

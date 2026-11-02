@@ -3,6 +3,7 @@ import type {
   RotateInput,
   RotateResult,
   SessionStore,
+  TokenWithSession,
 } from '#src/contracts.js';
 import { ToklynError } from '#src/errors.js';
 import type { RefreshTokenRecord, Session } from '#src/types.js';
@@ -26,6 +27,13 @@ export class MemorySessionStore implements SessionStore {
   async find(sessionId: string): Promise<Session | null> {
     const session = this.sessions.get(sessionId);
     return session ? structuredClone(session) : null;
+  }
+
+  async findByToken(hash: string): Promise<TokenWithSession | null> {
+    const refreshToken = this.tokens.get(hash);
+    const session = refreshToken && this.sessions.get(refreshToken.sessionId);
+    if (!refreshToken || !session) return null;
+    return structuredClone({ session, refreshToken });
   }
 
   // Runs without awaiting, so no other call can interleave.
