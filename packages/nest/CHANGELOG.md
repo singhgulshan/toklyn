@@ -1,5 +1,12 @@
 # @toklyn/nest
 
+## 0.6.0
+
+### Patch Changes
+
+- Updated dependencies [c2f814a]
+  - toklyn@0.6.0
+
 ## 0.5.1
 
 ### Patch Changes

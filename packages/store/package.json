@@ -1,6 +1,6 @@
 {
   "name": "@toklyn/store",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "license": "MIT",
   "description": "PostgreSQL, MySQL/MariaDB, SQLite, MongoDB and Redis session and access-token revocation stores for toklyn.",
   "keywords": [

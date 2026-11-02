@@ -1,6 +1,6 @@
 {
   "name": "@toklyn/next",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "license": "MIT",
   "description": "Next.js App Router helpers for toklyn sessions: route handlers, proxy and server components.",
   "keywords": [
