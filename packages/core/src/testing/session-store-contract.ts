@@ -102,6 +102,56 @@ export function sessionStoreContract(
       });
     });
 
+    describe('findByToken', () => {
+      it('returns the token with its session', async () => {
+        const { store, session } = await seed();
+
+        expect(await store.findByToken('hash-1')).toEqual({
+          session,
+          refreshToken: makeToken('hash-1', session),
+        });
+      });
+
+      it('returns null for an unknown token', async () => {
+        const { store } = await seed();
+
+        expect(await store.findByToken('missing')).toBeNull();
+      });
+
+      it('shows the consumption and the successor after a rotation', async () => {
+        const { store, session } = await seed();
+        const now = T0 + MINUTE;
+        await store.rotate(rotateInput({ now, claims: { role: 'viewer' } }));
+
+        const consumed = await store.findByToken('hash-1');
+        const successor = await store.findByToken('hash-2');
+
+        expect(consumed?.refreshToken.consumedAt).toBe(now);
+        expect(consumed?.session).toEqual({
+          ...session,
+          claims: { role: 'viewer' },
+          lastRefreshedAt: now,
+        });
+        expect(successor?.refreshToken).toEqual({
+          hash: 'hash-2',
+          sessionId: session.id,
+          issuedAt: now,
+          expiresAt: now + REFRESH_TTL,
+          consumedAt: null,
+        });
+      });
+
+      it('reports a revoked session without changing anything', async () => {
+        const { store, session } = await seed();
+        await store.revoke(session.id, T0 + MINUTE);
+
+        const found = await store.findByToken('hash-1');
+
+        expect(found?.session.revokedAt).toBe(T0 + MINUTE);
+        expect(found?.refreshToken.consumedAt).toBeNull();
+      });
+    });
+
     describe('rotate', () => {
       it('consumes the presented token and stores its successor', async () => {
         const { store, session } = await seed();

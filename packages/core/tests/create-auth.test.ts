@@ -703,6 +703,62 @@ describe('createAuth', () => {
       ).toBe('invalid_refresh_token');
       expect(calls).toBe(0);
     });
+
+    it('is not called for a forged token that only carries a real session id', async () => {
+      let calls = 0;
+      const { auth, events } = setup({
+        onRefresh: () => {
+          calls += 1;
+          return null;
+        },
+      });
+      const pair = await auth.createSession({ subject: 'user-1' });
+      const forged = `${pair.sessionId}.${'A'.repeat(43)}`;
+
+      expect(await codeOf(auth.refresh({ refreshToken: forged }))).toBe(
+        'invalid_refresh_token',
+      );
+      expect(calls).toBe(0);
+      expect(await auth.listSessions('user-1')).toHaveLength(1);
+      expect(events.map((e) => e.type)).not.toContain('session_revoked');
+    });
+
+    it('is not called for a token reused after the grace window', async () => {
+      let calls = 0;
+      const { auth, clock } = setup({
+        reuseGraceMs: 10 * SECOND,
+        onRefresh: () => {
+          calls += 1;
+        },
+      });
+      const pair = await auth.createSession({ subject: 'user-1' });
+      await auth.refresh({ refreshToken: pair.refreshToken });
+      clock.advance(5 * SECOND);
+      await auth.refresh({ refreshToken: pair.refreshToken });
+      clock.advance(10 * SECOND);
+
+      expect(
+        await codeOf(auth.refresh({ refreshToken: pair.refreshToken })),
+      ).toBe('refresh_token_reused');
+      expect(calls).toBe(2);
+    });
+
+    it('is not called for an expired refresh token', async () => {
+      let calls = 0;
+      const { auth, clock } = setup({
+        refreshTokenTtlSeconds: 60,
+        onRefresh: () => {
+          calls += 1;
+        },
+      });
+      const pair = await auth.createSession({ subject: 'user-1' });
+      clock.advance(2 * MINUTE);
+
+      expect(
+        await codeOf(auth.refresh({ refreshToken: pair.refreshToken })),
+      ).toBe('refresh_token_expired');
+      expect(calls).toBe(0);
+    });
   });
 
   describe('logout', () => {

@@ -5,8 +5,13 @@ import type {
   RotateResult,
   Session,
   SessionStore,
+  TokenWithSession,
 } from 'toklyn';
-import type { MongoCollection, MongoDatabase } from '#src/mongodb/client.js';
+import type {
+  MongoCollection,
+  MongoDatabase,
+  MongoDocument,
+} from '#src/mongodb/client.js';
 import {
   SESSION_FIELDS,
   checkString,
@@ -76,6 +81,24 @@ export class MongoSessionStore implements SessionStore {
     return document ? parseSession(document) : null;
   }
 
+  async findByToken(hash: string): Promise<TokenWithSession | null> {
+    checkString('refresh token hash', hash);
+    const document = await this.findTokenDocument(hash);
+    if (!document) return null;
+    const session = parseSession(document);
+    const token = only(document['tokens']);
+    return {
+      session,
+      refreshToken: {
+        hash,
+        sessionId: session.id,
+        issuedAt: integer(token['issuedAt']),
+        expiresAt: integer(token['expiresAt']),
+        consumedAt: consumedAtOf(document),
+      },
+    };
+  }
+
   async rotate(input: RotateInput): Promise<RotateResult> {
     const { presentedHash, newHash, now, refreshTtlMs, reuseGraceMs, claims } =
       input;
@@ -84,23 +107,12 @@ export class MongoSessionStore implements SessionStore {
     const claimsJson = claims ? JSON.stringify(claims) : null;
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-      const document = await this.sessions.findOne(
-        { 'tokens.hash': presentedHash },
-        {
-          projection: {
-            ...SESSION_FIELDS,
-            tokens: { $elemMatch: { hash: presentedHash } },
-            consumed: { $elemMatch: { hash: presentedHash } },
-          },
-        },
-      );
+      const document = await this.findTokenDocument(presentedHash);
       if (!document) return { status: 'unknown_token' };
       const session = parseSession(document);
       const version = integer(document['version']);
       const tokenExpiresAt = integer(only(document['tokens'])['expiresAt']);
-      const consumed = document['consumed'];
-      const consumedAt =
-        consumed === undefined ? null : integer(only(consumed)['at']);
+      const consumedAt = consumedAtOf(document);
       const unchanged = { _id: session.id, version };
 
       if (session.revokedAt !== null) {
@@ -220,6 +232,25 @@ export class MongoSessionStore implements SessionStore {
     });
     return deletedCount;
   }
+
+  /** The session with only the matching entries of its token arrays. */
+  private findTokenDocument(hash: string) {
+    return this.sessions.findOne(
+      { 'tokens.hash': hash },
+      {
+        projection: {
+          ...SESSION_FIELDS,
+          tokens: { $elemMatch: { hash } },
+          consumed: { $elemMatch: { hash } },
+        },
+      },
+    );
+  }
+}
+
+function consumedAtOf(document: MongoDocument): number | null {
+  const consumed = document['consumed'];
+  return consumed === undefined ? null : integer(only(consumed)['at']);
 }
 
 function only(value: unknown): Record<string, unknown> {

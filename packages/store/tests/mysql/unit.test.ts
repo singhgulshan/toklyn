@@ -97,6 +97,40 @@ function newSession(overrides: Partial<Session> = {}): NewSession {
   };
 }
 
+describe('MySqlSessionStore.findByToken', () => {
+  it('reads the token with its session in one non-locking statement', async () => {
+    const db = scripted([
+      {
+        rows: [
+          { ...lockedRow({}, { consumedAt: T0 }), token_issued_at: String(T0) },
+        ],
+      },
+    ]);
+
+    const found = await new MySqlSessionStore({
+      client: db.client,
+    }).findByToken('hash-1');
+
+    const expected = newSession();
+    expect(found).toEqual({
+      ...expected,
+      refreshToken: { ...expected.refreshToken, consumedAt: T0 },
+    });
+    expect(db.calls).toEqual([
+      [expect.stringMatching(/WHERE t.hash = \?$/), ['hash-1']],
+    ]);
+    expect(db.transactions()).toBe(0);
+  });
+
+  it('returns null for an unknown token', async () => {
+    const db = scripted([{ rows: [] }]);
+
+    expect(
+      await new MySqlSessionStore({ client: db.client }).findByToken('missing'),
+    ).toBeNull();
+  });
+});
+
 describe('MySqlSessionStore.rotate decisions', () => {
   it('reports an unknown token after one locking read', async () => {
     const db = scripted([{ rows: [] }]);

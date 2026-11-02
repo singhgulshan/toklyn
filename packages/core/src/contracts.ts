@@ -34,6 +34,11 @@ export interface NewSession {
   refreshToken: RefreshTokenRecord;
 }
 
+export interface TokenWithSession {
+  session: Session;
+  refreshToken: RefreshTokenRecord;
+}
+
 export interface RotateInput {
   presentedHash: string;
   newHash: string;
@@ -68,6 +73,8 @@ export interface SessionStore {
   /** Stores the session and its first token together. Rejects if either already exists. */
   create(input: NewSession): Promise<void>;
   find(sessionId: string): Promise<Session | null>;
+  /** Read-only. Null if the token or its session is missing. */
+  findByToken(hash: string): Promise<TokenWithSession | null>;
   rotate(input: RotateInput): Promise<RotateResult>;
   /** Idempotent. Returns the session if it existed. */
   revoke(sessionId: string, now: number): Promise<Session | null>;

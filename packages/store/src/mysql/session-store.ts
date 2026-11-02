@@ -4,6 +4,7 @@ import type {
   RotateResult,
   Session,
   SessionStore,
+  TokenWithSession,
 } from 'toklyn';
 import type { MySqlClient, MySqlExecutor } from '#src/mysql/client.js';
 import {
@@ -25,6 +26,7 @@ interface Statements {
   insertSession: string;
   insertToken: string;
   find: string;
+  findByToken: string;
   lockToken: string;
   revokeSession: string;
   revokeIn: string;
@@ -82,6 +84,23 @@ export class MySqlSessionStore implements SessionStore {
     const { rows } = await this.client.query(this.sql.find, [sessionId]);
     const [row] = rows;
     return row ? parseSession(row) : null;
+  }
+
+  async findByToken(hash: string): Promise<TokenWithSession | null> {
+    const { rows } = await this.client.query(this.sql.findByToken, [hash]);
+    const [row] = rows;
+    if (!row) return null;
+    const session = parseSession(row);
+    return {
+      session,
+      refreshToken: {
+        hash,
+        sessionId: session.id,
+        issuedAt: parseInteger(row['token_issued_at']),
+        expiresAt: parseInteger(row['token_expires_at']),
+        consumedAt: nullableInteger(row['token_consumed_at']),
+      },
+    };
   }
 
   async rotate(input: RotateInput): Promise<RotateResult> {
@@ -228,6 +247,13 @@ VALUES (?, ?, ?, ?, ${MS}, ${MS}, ${MS}, ${MS})`,
 VALUES (?, ?, ${MS}, ${MS}, ${MS})`,
 
     find: `SELECT ${sessionColumns()} FROM ${sessions} WHERE id = ?`,
+
+    findByToken: `SELECT ${sessionColumns('s.')},
+  CAST(t.issued_at AS CHAR) AS token_issued_at,
+  CAST(t.expires_at AS CHAR) AS token_expires_at,
+  CAST(t.consumed_at AS CHAR) AS token_consumed_at
+FROM ${refreshTokens} t JOIN ${sessions} s ON s.id = t.session_id
+WHERE t.hash = ?`,
 
     lockToken: `SELECT ${sessionColumns('s.')},
   CAST(t.expires_at AS CHAR) AS token_expires_at,

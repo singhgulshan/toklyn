@@ -4,6 +4,7 @@ import type {
   RotateResult,
   Session,
   SessionStore,
+  TokenWithSession,
 } from 'toklyn';
 import type { PostgresClient } from '#src/postgres/client.js';
 import {
@@ -25,6 +26,7 @@ export interface PostgresSessionStoreOptions extends PostgresSchemaOptions {
 interface Statements {
   create: string;
   find: string;
+  findByToken: string;
   rotate: string;
   revoke: string;
   revokeAll: string;
@@ -67,6 +69,22 @@ export class PostgresSessionStore implements SessionStore {
   async find(sessionId: string): Promise<Session | null> {
     const [row] = await this.client.query(this.sql.find, [sessionId]);
     return row ? parseSession(row) : null;
+  }
+
+  async findByToken(hash: string): Promise<TokenWithSession | null> {
+    const [row] = await this.client.query(this.sql.findByToken, [hash]);
+    if (!row) return null;
+    const session = parseSession(row);
+    return {
+      session,
+      refreshToken: {
+        hash,
+        sessionId: session.id,
+        issuedAt: parseInteger(row['token_issued_at']),
+        expiresAt: parseInteger(row['token_expires_at']),
+        consumedAt: nullableInteger(row['token_consumed_at']),
+      },
+    };
   }
 
   async rotate(input: RotateInput): Promise<RotateResult> {
@@ -142,6 +160,10 @@ function nullableTimestamp(value: number | null): string | null {
   return value === null ? null : String(value);
 }
 
+function nullableInteger(value: unknown): number | null {
+  return value === null ? null : parseInteger(value);
+}
+
 function buildStatements(options: PostgresSchemaOptions): Statements {
   // Params are typed as text before casting, else some drivers JSON-encode strings bound to jsonb.
   const { sessions, refreshTokens } = resolveNames(options).tables;
@@ -161,6 +183,15 @@ SELECT $9, $10, ${toTimestamp('$11')}, ${toTimestamp('$12')}, ${toTimestamp('$13
 FROM new_session`,
 
     find: `SELECT ${SESSION_COLUMNS} FROM ${sessions} WHERE id = $1`,
+
+    findByToken: `SELECT ${SESSION_COLUMNS}, t.token_issued_at, t.token_expires_at,
+  t.token_consumed_at
+FROM ${sessions} JOIN (
+  SELECT session_id, ${toEpochMs('issued_at')} AS token_issued_at,
+    ${toEpochMs('expires_at')} AS token_expires_at,
+    ${toEpochMs('consumed_at')} AS token_consumed_at
+  FROM ${refreshTokens} WHERE hash = $1
+) t ON t.session_id = id`,
 
     // Locks the token, then its session; a concurrent rotation of the same token waits
     // and then sees it consumed. The writes below are mutually exclusive by status.
