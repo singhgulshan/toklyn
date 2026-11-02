@@ -8,3 +8,9 @@ allowBuilds:
   esbuild: false
   prisma: false
   sqlite3: true
+# Patched versions for advisories in non-published dependencies (OpenSSF Scorecard).
+minimumReleaseAgeExclude:
+  - minimatch@11.0.4
+overrides:
+  '@trivago/prettier-plugin-sort-imports>minimatch': ^11.0.4
+  sequelize>uuid: ^11.1.1
